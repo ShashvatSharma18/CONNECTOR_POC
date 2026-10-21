@@ -13,6 +13,9 @@ from app.connectors.github import GitHubConnector
 from app.connectors.azure_devops import AzureDevOpsConnector
 from app.connectors.sharepoint import SharePointConnector
 from app.connectors.teams import TeamsConnector
+from app.connectors.slack import SlackConnector
+from app.connectors.postgres import DatabaseConnector
+from app.connectors.notion import NotionConnector
 
 logger = logging.getLogger(__name__)
 
@@ -121,22 +124,43 @@ def get_connectors_status():
         and os.getenv("MICROSOFT_CLIENT_SECRET")
     )
     ado_configured = bool(os.getenv("AZURE_DEVOPS_ORG_URL") and os.getenv("AZURE_DEVOPS_PAT"))
-    servicenow_configured = bool(
-        os.getenv("SERVICENOW_INSTANCE_URL")
-        and os.getenv("SERVICENOW_USERNAME")
-        and os.getenv("SERVICENOW_PASSWORD")
-    )
-    salesforce_token_file = os.path.exists(".salesforce_token.json")
-    salesforce_configured = bool(
-        salesforce_token_file
-        or (os.getenv("SALESFORCE_CLIENT_ID") and os.getenv("SALESFORCE_CLIENT_SECRET"))
-    )
     google_drive_token_file = os.path.exists(".google_drive_token.json")
-    jira_configured = bool(
-        os.getenv("JIRA_BASE_URL")
-        and os.getenv("JIRA_EMAIL")
-        and os.getenv("JIRA_API_TOKEN")
-    )
+    slack_token = bool(os.getenv("SLACK_BOT_TOKEN"))
+    db_configured = bool(os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL") or os.path.exists("data/chat_history.db"))
+    notion_configured = bool(os.getenv("NOTION_API_KEY"))
+
+    slack_account = None
+    if slack_token:
+        try:
+            st = SlackConnector().get_status()
+            if st.get("authenticated"):
+                slack_account = f"@{st.get('user', 'bot')} ({st.get('team', 'Workspace')})"
+            else:
+                slack_account = "Configured"
+        except Exception:
+            slack_account = "Configured"
+
+    db_account = None
+    if db_configured:
+        try:
+            st = DatabaseConnector().get_status()
+            if st.get("authenticated"):
+                db_account = f"{st.get('database_type')} ({st.get('table_count')} tables)"
+            else:
+                db_account = "Connected"
+        except Exception:
+            db_account = "Connected"
+
+    notion_account = None
+    if notion_configured:
+        try:
+            st = NotionConnector().get_status()
+            if st.get("authenticated"):
+                notion_account = "Connected"
+            else:
+                notion_account = "Configured"
+        except Exception:
+            notion_account = "Configured"
 
     gh_account = None
     if github_token:
@@ -175,77 +199,70 @@ def get_connectors_status():
             "config_fields": [],
         },
         {
-            "id": "jira",
-            "name": "Jira",
-            "type": "project_management",
-            "status": "Live" if jira_configured else "Not Connected",
-            "is_connected": bool(jira_configured),
-            "badge_color": "green" if jira_configured else "gray",
-            "account": os.getenv("JIRA_EMAIL") if jira_configured else None,
+            "id": "slack",
+            "name": "Slack",
+            "type": "chat",
+            "status": "Live" if slack_token else "Not Connected",
+            "is_connected": bool(slack_token),
+            "badge_color": "green" if slack_token else "gray",
+            "account": slack_account,
             "auth_type": "credentials",
-            "description": "Search Atlassian Jira Cloud issues, sprint backlogs, and project tickets.",
+            "description": "Search Slack channels, conversation history, and discussions via Bot Token.",
             "config_fields": [
                 {
-                    "key": "jira_base_url",
-                    "label": "Jira Domain URL",
-                    "placeholder": "https://your-domain.atlassian.net",
-                    "type": "text",
-                    "required": True,
-                    "default_value": os.getenv("JIRA_BASE_URL", ""),
-                },
-                {
-                    "key": "jira_email",
-                    "label": "Atlassian Account Email",
-                    "placeholder": "name@example.com",
-                    "type": "text",
-                    "required": True,
-                    "default_value": os.getenv("JIRA_EMAIL", ""),
-                },
-                {
-                    "key": "jira_api_token",
-                    "label": "Atlassian API Token",
-                    "placeholder": "Paste your Jira API Token",
+                    "key": "slack_bot_token",
+                    "label": "Bot User OAuth Token",
+                    "placeholder": "xoxb-...",
                     "type": "password",
                     "required": True,
-                    "help_url": "https://id.atlassian.com/manage-profile/security/api-tokens",
-                    "help_text": "Create a token from Atlassian Account Security > API Tokens.",
+                    "default_value": os.getenv("SLACK_BOT_TOKEN", ""),
+                    "help_url": "https://api.slack.com/apps",
+                    "help_text": "Create a Slack App with channels:read and groups:read scopes.",
                 },
             ],
         },
         {
-            "id": "servicenow",
-            "name": "ServiceNow",
-            "type": "itsm",
-            "status": "Live" if servicenow_configured else "Not Connected",
-            "is_connected": bool(servicenow_configured),
-            "badge_color": "green" if servicenow_configured else "gray",
-            "account": os.getenv("SERVICENOW_USERNAME") if servicenow_configured else None,
+            "id": "postgres",
+            "name": "SQL Database",
+            "type": "database",
+            "status": "Live" if db_configured else "Not Connected",
+            "is_connected": bool(db_configured),
+            "badge_color": "green" if db_configured else "gray",
+            "account": db_account,
             "auth_type": "credentials",
-            "description": "Query ServiceNow incidents, IT service requests, and knowledge articles.",
+            "description": "PostgreSQL or SQLite database for read-only analytical queries and schemas.",
             "config_fields": [
                 {
-                    "key": "servicenow_instance_url",
-                    "label": "Instance URL",
-                    "placeholder": "https://devXXXXX.service-now.com",
-                    "type": "text",
-                    "required": True,
-                    "default_value": os.getenv("SERVICENOW_INSTANCE_URL", ""),
-                    "help_text": "Your ServiceNow Developer or company instance URL.",
-                },
-                {
-                    "key": "servicenow_username",
-                    "label": "Username",
-                    "placeholder": "admin",
-                    "type": "text",
-                    "required": True,
-                    "default_value": os.getenv("SERVICENOW_USERNAME", ""),
-                },
-                {
-                    "key": "servicenow_password",
-                    "label": "Password",
-                    "placeholder": "••••••••",
+                    "key": "postgres_url",
+                    "label": "Database Connection URL",
+                    "placeholder": "postgresql://user:pass@localhost:5432/dbname or sqlite:///data/db.sqlite",
                     "type": "password",
                     "required": True,
+                    "default_value": os.getenv("POSTGRES_URL", ""),
+                    "help_text": "PostgreSQL connection string or path to a SQLite database file.",
+                },
+            ],
+        },
+        {
+            "id": "notion",
+            "name": "Notion",
+            "type": "documents",
+            "status": "Live" if notion_configured else "Not Connected",
+            "is_connected": bool(notion_configured),
+            "badge_color": "green" if notion_configured else "gray",
+            "account": notion_account,
+            "auth_type": "credentials",
+            "description": "Notion workspace pages, knowledge bases, and team documentation.",
+            "config_fields": [
+                {
+                    "key": "notion_api_key",
+                    "label": "Internal Integration Secret",
+                    "placeholder": "secret_...",
+                    "type": "password",
+                    "required": True,
+                    "default_value": os.getenv("NOTION_API_KEY", ""),
+                    "help_url": "https://www.notion.so/my-integrations",
+                    "help_text": "Create an integration at notion.so/my-integrations and share pages with it.",
                 },
             ],
         },
@@ -268,43 +285,6 @@ def get_connectors_status():
                     "required": True,
                     "help_url": "https://github.com/settings/tokens",
                     "help_text": "Create a classic token with 'repo' scope, or use GitHub CLI.",
-                },
-            ],
-        },
-        {
-            "id": "salesforce",
-            "name": "Salesforce",
-            "type": "crm",
-            "status": "Live" if salesforce_token_file else "Not Connected",
-            "is_connected": bool(salesforce_token_file),
-            "badge_color": "green" if salesforce_token_file else "gray",
-            "account": "Connected" if salesforce_token_file else None,
-            "auth_type": "oauth" if (os.getenv("SALESFORCE_CLIENT_ID") and os.getenv("SALESFORCE_CLIENT_SECRET")) else "credentials",
-            "auth_url": "http://localhost:8000/salesforce/auth/login",
-            "description": "Salesforce CRM Connected App OAuth configuration.",
-            "config_fields": [
-                {
-                    "key": "salesforce_instance_url",
-                    "label": "MyDomain URL",
-                    "placeholder": "https://your-org.my.salesforce.com",
-                    "type": "text",
-                    "required": False,
-                    "default_value": os.getenv("SALESFORCE_INSTANCE_URL", "https://login.salesforce.com"),
-                },
-                {
-                    "key": "salesforce_client_id",
-                    "label": "Connected App Consumer Key",
-                    "placeholder": "3MVG9...",
-                    "type": "text",
-                    "required": True,
-                    "default_value": os.getenv("SALESFORCE_CLIENT_ID", ""),
-                },
-                {
-                    "key": "salesforce_client_secret",
-                    "label": "Connected App Consumer Secret",
-                    "placeholder": "••••••••",
-                    "type": "password",
-                    "required": True,
                 },
             ],
         },
@@ -453,8 +433,47 @@ def configure_connector(payload: ConfigureConnectorRequest):
     cid = payload.connector_id.lower().strip()
     creds = {k.strip(): str(v).strip() for k, v in payload.credentials.items()}
 
-    # 1. Jira
-    if cid == "jira":
+    # Slack
+    if cid == "slack":
+        bot_token = creds.get("slack_bot_token") or ""
+        if not bot_token:
+            raise HTTPException(400, "Slack Bot User OAuth Token is required.")
+        conn = SlackConnector(token=bot_token)
+        status = conn.get_status()
+        if not status.get("authenticated"):
+            err_msg = status.get("error") or "Invalid Slack Bot Token"
+            raise HTTPException(400, f"Slack connection failed: {err_msg}")
+        update_env_file({"SLACK_BOT_TOKEN": bot_token})
+        return {"status": "connected", "message": f"Successfully connected to Slack workspace '{status.get('team')}' as @{status.get('user')}!"}
+
+    # SQL Database / Postgres
+    elif cid in ["postgres", "database"]:
+        db_url = creds.get("postgres_url") or ""
+        if not db_url:
+            raise HTTPException(400, "Database URL is required.")
+        conn = DatabaseConnector(db_url=db_url)
+        status = conn.get_status()
+        if not status.get("authenticated"):
+            err_msg = status.get("error") or "Connection failed"
+            raise HTTPException(400, f"Database connection failed: {err_msg}")
+        update_env_file({"POSTGRES_URL": db_url})
+        return {"status": "connected", "message": f"Connected to {status.get('database_type')} ({status.get('table_count')} tables detected)!"}
+
+    # Notion
+    elif cid == "notion":
+        token = creds.get("notion_api_key") or ""
+        if not token:
+            raise HTTPException(400, "Notion Integration Secret is required.")
+        conn = NotionConnector(token=token)
+        status = conn.get_status()
+        if not status.get("authenticated"):
+            err_msg = status.get("error") or "Invalid Notion token"
+            raise HTTPException(400, f"Notion authentication failed: {err_msg}")
+        update_env_file({"NOTION_API_KEY": token})
+        return {"status": "connected", "message": "Successfully connected to Notion workspace!"}
+
+    # Legacy: Jira
+    elif cid == "jira":
         base_url = creds.get("jira_base_url") or ""
         email = creds.get("jira_email") or ""
         api_token = creds.get("jira_api_token") or ""
@@ -586,6 +605,18 @@ def disconnect_connector(payload: DisconnectConnectorRequest):
         if os.path.exists(".google_drive_token.json"):
             os.remove(".google_drive_token.json")
         return {"status": "disconnected", "message": "Google Drive disconnected."}
+ 
+    elif cid == "slack":
+        update_env_file({"SLACK_BOT_TOKEN": None})
+        return {"status": "disconnected", "message": "Slack disconnected."}
+
+    elif cid in ["postgres", "database"]:
+        update_env_file({"POSTGRES_URL": None, "DATABASE_URL": None})
+        return {"status": "disconnected", "message": "Database disconnected."}
+
+    elif cid == "notion":
+        update_env_file({"NOTION_API_KEY": None})
+        return {"status": "disconnected", "message": "Notion disconnected."}
 
     elif cid == "salesforce":
         if os.path.exists(".salesforce_token.json"):

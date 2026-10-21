@@ -17,6 +17,9 @@ import {
   Unlink,
   ExternalLink,
   CheckCircle2,
+  Hash,
+  Database,
+  FileText,
 } from 'lucide-react';
 import { ConnectorSource } from '../types/chat';
 import { ConnectorModal } from './ConnectorModal';
@@ -143,6 +146,25 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
         return (
           <div className="source-icon-box bg-yellow-gradient">
             <HardDrive size={16} className="text-white" />
+          </div>
+        );
+      case 'slack':
+        return (
+          <div className="source-icon-box bg-slack-gradient">
+            <Hash size={16} className="text-white" />
+          </div>
+        );
+      case 'postgres':
+      case 'database':
+        return (
+          <div className="source-icon-box bg-postgres-gradient">
+            <Database size={16} className="text-white" />
+          </div>
+        );
+      case 'notion':
+        return (
+          <div className="source-icon-box bg-notion-gradient">
+            <FileText size={16} className="text-white" />
           </div>
         );
       case 'jira':

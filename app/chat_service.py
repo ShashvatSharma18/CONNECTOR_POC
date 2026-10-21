@@ -19,6 +19,9 @@ from app.connectors.servicenow import get_servicenow_connector
 from app.connectors.salesforce import get_salesforce_connector
 from app.connectors.google_drive import get_google_drive_connector
 from app.connectors.jira import get_jira_connector
+from app.connectors.slack import get_slack_connector
+from app.connectors.postgres import DatabaseConnector
+from app.connectors.notion import get_notion_connector
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -209,6 +212,9 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
     has_sharepoint_intent = bool(re.search(r"\b(sharepoint|teams|microsoft)\b", clean_text, re.I))
     has_fileshare_intent = bool(re.search(r"\b(file\s*share|shared\s*folder|test-share)\b", clean_text, re.I))
     has_lms_intent = bool(re.search(r"\b(lms|course|courses|learning)\b", clean_text, re.I))
+    has_slack_intent = bool(re.search(r"\b(slack|channel|channels|dm|direct\s*message|workspace\s*chat)\b", clean_text, re.I))
+    has_database_intent = bool(re.search(r"\b(postgres|postgresql|database|sql|tables?|schema|query|sqlite)\b", clean_text, re.I))
+    has_notion_intent = bool(re.search(r"\b(notion|wiki|workspace\s*page|notion\s*page|notion\s*doc)\b", clean_text, re.I))
     has_servicenow_intent = bool(re.search(r"\b(servicenow|incident|incidents|ticket|tickets|service\s*request|service\s*requests|sc_request|knowledge\s*base)\b", clean_text, re.I))
     has_salesforce_intent = bool(re.search(r"\b(salesforce|crm|lead|leads|opportunity|opportunities|deal|deals|account|accounts)\b", clean_text, re.I))
     has_drive_intent = bool(re.search(r"\b(google\s*drive|gdrive|drive\s*file|drive\s*files|google\s*doc|google\s*docs|google\s*sheet|google\s*sheets|drive)\b", clean_text, re.I))
@@ -223,7 +229,7 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
             clean_normalized,
             re.I,
         )
-        or ((target_h is not None or target_day is not None) and not (has_github_intent or has_jira_intent or has_drive_intent or has_servicenow_intent or has_salesforce_intent))
+        or ((target_h is not None or target_day is not None) and not (has_github_intent or has_jira_intent or has_drive_intent or has_servicenow_intent or has_salesforce_intent or has_slack_intent or has_database_intent or has_notion_intent))
     )
 
     rich_cards: list[dict[str, Any]] = []
@@ -239,12 +245,18 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
             prev_cards = m["rich_cards"]
             break
 
-    if is_followup and not (has_email_intent or has_github_intent or has_sharepoint_intent or has_drive_intent or has_jira_intent or has_servicenow_intent or has_salesforce_intent):
-        # Determine if previous context was email or github
+    if is_followup and not (has_email_intent or has_github_intent or has_sharepoint_intent or has_drive_intent or has_jira_intent or has_servicenow_intent or has_salesforce_intent or has_slack_intent or has_database_intent or has_notion_intent):
+        # Determine if previous context was email, github, slack, database, or notion
         if any(c.get("type") == "email" for c in prev_cards):
             has_email_intent = True
         elif any(c.get("type") == "repo" for c in prev_cards):
             has_github_intent = True
+        elif any(c.get("type") == "slack" for c in prev_cards):
+            has_slack_intent = True
+        elif any(c.get("type") == "database" for c in prev_cards):
+            has_database_intent = True
+        elif any(c.get("type") == "notion" for c in prev_cards):
+            has_notion_intent = True
 
     # 4. Handle Pure Greeting (no sources queried)
     if is_pure_greeting:
@@ -941,10 +953,204 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                     logger.error("Error retrieving Jira data: %s", str(e))
                     retrieved_evidence.append(f"Jira retrieval error: {str(e)}")
 
+        # J. Slack Retrieval
+        if has_slack_intent:
+            slack_token = os.getenv("SLACK_BOT_TOKEN")
+            if not slack_token:
+                retrieved_evidence.append(
+                    "Slack connector is ready and integrated, but SLACK_BOT_TOKEN is not configured yet. "
+                    "Please configure your Slack Bot User OAuth Token in the Connected Sources panel."
+                )
+                sources_accessed.append({
+                    "name": "Slack",
+                    "status_text": "Code Ready (Awaiting Bot Token)",
+                    "icon": "slack",
+                    "verified": False,
+                })
+            else:
+                try:
+                    slack = get_slack_connector()
+                    stopwords = r"\b(slack|channels?|dms?|messages?|chat|show|list|get|find|search|about|what|is|in|my)\b"
+                    clean_slack_q = re.sub(stopwords, " ", clean_text, flags=re.I).strip()
+                    clean_slack_q = " ".join(clean_slack_q.split())
+
+                    if clean_slack_q and len(clean_slack_q) > 2:
+                        found_msgs = slack.search_all_channels_for_query(clean_slack_q, limit_per_channel=10)
+                        if found_msgs:
+                            sources_accessed.append({
+                                "name": "Slack",
+                                "status_text": f"Messages found ({len(found_msgs)})",
+                                "icon": "slack",
+                                "verified": True,
+                            })
+                            evidence_lines = [f"Slack Messages matching '{clean_slack_q}':"]
+                            for m in found_msgs[:5]:
+                                evidence_lines.append(f"- [#{m.get('channel_name')}] User {m.get('user')}: {m.get('text')}")
+                                rich_cards.append({
+                                    "type": "slack",
+                                    "title": f"#{m.get('channel_name')}",
+                                    "metadata": f"Slack • User {m.get('user')}",
+                                    "snippet": m.get("text", "")[:250],
+                                    "action_label": "Open Slack",
+                                })
+                            retrieved_evidence.append("\n".join(evidence_lines))
+                        else:
+                            retrieved_evidence.append(f"Slack was searched for '{clean_slack_q}', but no matching messages were found.")
+                    else:
+                        channels = slack.list_channels(limit=10)
+                        if channels:
+                            sources_accessed.append({
+                                "name": "Slack",
+                                "status_text": f"Channels listed ({len(channels)})",
+                                "icon": "slack",
+                                "verified": True,
+                            })
+                            evidence_lines = ["Slack Channels:"]
+                            for ch in channels:
+                                evidence_lines.append(f"- **#{ch.get('name')}**: {ch.get('purpose') or ch.get('topic') or 'General discussion'} ({ch.get('num_members')} members)")
+                                rich_cards.append({
+                                    "type": "slack",
+                                    "title": f"#{ch.get('name')}",
+                                    "metadata": f"Slack • {ch.get('num_members')} members",
+                                    "snippet": ch.get("purpose") or ch.get("topic") or "Slack discussion channel",
+                                    "action_label": "View Channel",
+                                })
+                            retrieved_evidence.append("\n".join(evidence_lines))
+                        else:
+                            retrieved_evidence.append("Slack was queried, but no accessible channels were returned.")
+                except Exception as e:
+                    logger.error("Error retrieving Slack data: %s", str(e))
+                    retrieved_evidence.append(f"Slack retrieval error: {str(e)}")
+
+        # K. SQL Database Retrieval (PostgreSQL / SQLite)
+        if has_database_intent:
+            db_conn = DatabaseConnector()
+            st = db_conn.get_status()
+            if not st.get("authenticated"):
+                retrieved_evidence.append(
+                    "Database connector is ready and integrated, but POSTGRES_URL is not configured yet. "
+                    "Configure it in the Connected Sources panel with a PostgreSQL or SQLite connection string."
+                )
+                sources_accessed.append({
+                    "name": "SQL Database",
+                    "status_text": "Code Ready (Awaiting Connection URL)",
+                    "icon": "postgres",
+                    "verified": False,
+                })
+            else:
+                try:
+                    tables = db_conn.list_tables()
+                    target_table = None
+                    for t in tables:
+                        if re.search(rf"\b{re.escape(t)}\b", clean_text, re.I):
+                            target_table = t
+                            break
+
+                    if target_table:
+                        schema = db_conn.describe_table(target_table)
+                        sample = db_conn.execute_read_query(f"SELECT * FROM {target_table}", limit=5)
+                        sources_accessed.append({
+                            "name": "SQL Database",
+                            "status_text": f"Table '{target_table}' inspected",
+                            "icon": "postgres",
+                            "verified": True,
+                        })
+                        cols_summary = ", ".join([f"{col['name']} ({col['type']})" for col in schema.get("columns", [])])
+                        evidence_lines = [
+                            f"Database Table '{target_table}':",
+                            f"- Columns: {cols_summary}",
+                            f"- Row count: {sample.get('row_count', 0)}",
+                            f"- Sample rows: {json.dumps(sample.get('rows', [])[:3])}"
+                        ]
+                        retrieved_evidence.append("\n".join(evidence_lines))
+                        rich_cards.append({
+                            "type": "database",
+                            "title": f"Table: {target_table}",
+                            "metadata": f"{st.get('database_type')} • {len(schema.get('columns', []))} columns",
+                            "snippet": f"Columns: {cols_summary}",
+                            "action_label": "View Table",
+                        })
+                    else:
+                        sources_accessed.append({
+                            "name": "SQL Database",
+                            "status_text": f"{len(tables)} tables indexed",
+                            "icon": "postgres",
+                            "verified": True,
+                        })
+                        evidence_lines = [f"Connected {st.get('database_type')} Tables ({len(tables)} total):"]
+                        for tbl in tables[:15]:
+                            evidence_lines.append(f"- **{tbl}**")
+                            rich_cards.append({
+                                "type": "database",
+                                "title": f"Table: {tbl}",
+                                "metadata": f"{st.get('database_type')} Database",
+                                "snippet": "Available table in database.",
+                                "action_label": "Inspect Table",
+                            })
+                        retrieved_evidence.append("\n".join(evidence_lines))
+                except Exception as e:
+                    logger.error("Error retrieving Database data: %s", str(e))
+                    retrieved_evidence.append(f"Database query error: {str(e)}")
+
+        # L. Notion Retrieval
+        if has_notion_intent:
+            notion_key = os.getenv("NOTION_API_KEY")
+            if not notion_key:
+                retrieved_evidence.append(
+                    "Notion connector is ready and integrated, but NOTION_API_KEY is not configured yet. "
+                    "Configure your Notion Internal Integration Secret in the Connected Sources panel."
+                )
+                sources_accessed.append({
+                    "name": "Notion",
+                    "status_text": "Code Ready (Awaiting Integration Secret)",
+                    "icon": "notion",
+                    "verified": False,
+                })
+            else:
+                try:
+                    notion = get_notion_connector()
+                    clean_notion_q = re.sub(r"\b(notion|page|pages|doc|docs|workspace|search|find|show|get|about|what|is)\b", " ", clean_text, flags=re.I).strip()
+                    res = notion.search(query=clean_notion_q, page_size=5)
+                    pages = res.get("results", [])
+                    if pages:
+                        sources_accessed.append({
+                            "name": "Notion",
+                            "status_text": f"Pages retrieved ({len(pages)})",
+                            "icon": "notion",
+                            "verified": True,
+                        })
+                        evidence_lines = [f"Notion Pages ({len(pages)} found):"]
+                        for p in pages:
+                            p_title = p.get("title", "Untitled")
+                            p_url = p.get("url", "")
+                            p_id = p.get("id", "")
+                            content_excerpt = ""
+                            try:
+                                content_excerpt = notion.get_page_content(p_id, max_blocks=5)
+                            except Exception:
+                                pass
+                            evidence_lines.append(
+                                f"- **{p_title}** ({p.get('type')}) - Last edited: {p.get('last_edited_time')}\n  URL: {p_url}\n  Summary: {content_excerpt[:200]}"
+                            )
+                            rich_cards.append({
+                                "type": "notion",
+                                "title": p_title,
+                                "metadata": f"Notion • {p.get('type')} • {str(p.get('last_edited_time', ''))[:10]}",
+                                "snippet": content_excerpt[:200] or f"Notion page: {p_title}",
+                                "link": p_url,
+                                "action_label": "Open in Notion",
+                            })
+                        retrieved_evidence.append("\n".join(evidence_lines))
+                    else:
+                        retrieved_evidence.append(f"Notion was searched for '{clean_notion_q}', but no matching pages or databases were found.")
+                except Exception as e:
+                    logger.error("Error retrieving Notion data: %s", str(e))
+                    retrieved_evidence.append(f"Notion retrieval error: {str(e)}")
+
         # Build prompt for Groq LLM
         system_prompt = (
             "You are an intelligent, professional workplace AI assistant for Shashvat at Appinventiv.\n"
-            "You have access to connected workplace sources (Gmail, Google Drive, GitHub, Jira, ServiceNow, Salesforce, SharePoint, Microsoft Teams, Azure DevOps, Local File Share, and LMS).\n\n"
+            "You have access to connected workplace sources (Gmail, Google Drive, Slack, SQL Database, Notion, GitHub, SharePoint, Microsoft Teams, Azure DevOps, Local File Share, and LMS).\n\n"
             "CRITICAL INSTRUCTIONS:\n"
             "1. If the user greeting is mixed (e.g., 'Hi, find my latest email'), greet them cordially AND answer their source inquiry.\n"
             "2. Base your factual answers STRICTLY on the retrieved evidence provided below. Do NOT invent, assume, or fabricate any emails, files, senders, or code that is not present in the evidence.\n"

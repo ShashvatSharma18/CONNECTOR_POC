@@ -1038,6 +1038,9 @@ body {
 .bg-emerald-gradient { background: linear-gradient(135deg, #10B981, #047857); }
 .bg-yellow-gradient { background: linear-gradient(135deg, #F59E0B, #D97706); }
 .bg-jira-gradient { background: linear-gradient(135deg, #0052CC, #0747A6); }
+.bg-slack-gradient { background: linear-gradient(135deg, #4A154B, #611f69); }
+.bg-postgres-gradient { background: linear-gradient(135deg, #336791, #244b6b); }
+.bg-notion-gradient { background: linear-gradient(135deg, #37352F, #191919); }
 
 .source-item-info {
   display: flex;
