@@ -167,10 +167,7 @@ def gmail_login():
 def gmail_callback(code: str = Query(...), state: str = Query(default="")):
     connector = get_gmail_connector()
     connector.exchange_code_for_token(code)
-    return {
-        "status": "authenticated",
-        "message": "Gmail authentication successful! You can now access /gmail/messages and /gmail/status",
-    }
+    return RedirectResponse(url="http://localhost:5173/?connected=gmail")
 
 
 @app.get("/gmail/status")
@@ -224,10 +221,7 @@ def google_drive_login():
 def google_drive_callback(code: str = Query(...), state: str = Query(default="")):
     connector = get_google_drive_connector()
     connector.exchange_code_for_token(code)
-    return {
-        "status": "authenticated",
-        "message": "Google Drive authentication successful! You can now access /google-drive/files and /google-drive/status",
-    }
+    return RedirectResponse(url="http://localhost:5173/?connected=google_drive")
 
 
 @app.get("/google-drive/status")
@@ -349,10 +343,7 @@ def salesforce_login():
 def salesforce_callback(code: str = Query(...), state: str = Query(default="sf_auth_state")):
     connector = get_salesforce_connector()
     connector.exchange_code_for_token(code)
-    return {
-        "status": "authenticated",
-        "message": "Salesforce authentication successful! You can now access Salesforce endpoints and /salesforce/status",
-    }
+    return RedirectResponse(url="http://localhost:5173/?connected=salesforce")
 
 
 @app.get("/salesforce/status")

@@ -32,6 +32,11 @@ export const App: React.FC = () => {
   useEffect(() => {
     loadConnectors();
     loadSessions();
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('connected')) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   }, []);
 
   const loadConnectors = async () => {
