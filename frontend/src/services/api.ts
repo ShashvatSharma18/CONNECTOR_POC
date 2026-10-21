@@ -86,3 +86,34 @@ export async function sendChatMessage(
   return res.json();
 }
 
+export async function configureConnector(
+  connectorId: string,
+  credentials: Record<string, string>
+): Promise<{ status: string; message: string; auth_url?: string }> {
+  const res = await fetch(`${API_BASE}/connectors/configure`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ connector_id: connectorId, credentials }),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => null);
+    throw new Error(errorData?.detail || 'Failed to configure connector');
+  }
+  return res.json();
+}
+
+export async function disconnectConnector(
+  connectorId: string
+): Promise<{ status: string; message: string }> {
+  const res = await fetch(`${API_BASE}/connectors/disconnect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ connector_id: connectorId }),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => null);
+    throw new Error(errorData?.detail || 'Failed to disconnect connector');
+  }
+  return res.json();
+}
+

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Lightbulb,
   Check,
@@ -13,20 +13,75 @@ import {
   Cloud,
   HardDrive,
   CheckSquare,
+  Settings2,
+  Unlink,
+  ExternalLink,
+  CheckCircle2,
 } from 'lucide-react';
 import { ConnectorSource } from '../types/chat';
+import { ConnectorModal } from './ConnectorModal';
+import { configureConnector, disconnectConnector } from '../services/api';
 
 interface SourcePanelProps {
   sources: ConnectorSource[];
   connectedCount: number;
   totalCount: number;
+  onRefreshConnectors: () => Promise<void>;
 }
 
 export const SourcePanel: React.FC<SourcePanelProps> = ({
   sources,
   connectedCount,
   totalCount,
+  onRefreshConnectors,
 }) => {
+  const [selectedSourceForModal, setSelectedSourceForModal] = useState<ConnectorSource | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
+    setToastMessage({ text, type });
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 4000);
+  };
+
+  const handleConnect = (source: ConnectorSource) => {
+    if (source.auth_type === 'oauth' && source.auth_url) {
+      // Redirect to OAuth authorization endpoint
+      window.location.href = source.auth_url;
+    } else if (source.auth_type === 'credentials') {
+      setSelectedSourceForModal(source);
+    }
+  };
+
+  const handleDisconnect = async (source: ConnectorSource) => {
+    const confirmed = window.confirm(`Are you sure you want to disconnect ${source.name}?`);
+    if (!confirmed) return;
+
+    setActionLoadingId(source.id);
+    try {
+      await disconnectConnector(source.id);
+      showToast(`${source.name} disconnected successfully.`, 'success');
+      await onRefreshConnectors();
+    } catch (err: any) {
+      showToast(err.message || `Failed to disconnect ${source.name}`, 'error');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleSaveCredentials = async (connectorId: string, credentials: Record<string, string>) => {
+    const result = await configureConnector(connectorId, credentials);
+    if (result.auth_url) {
+      // For Salesforce, after configuring client ID/secret, navigate to OAuth
+      window.location.href = result.auth_url;
+      return;
+    }
+    showToast(result.message || 'Connected successfully!', 'success');
+    await onRefreshConnectors();
+  };
+
   // Helper to render connector icon with proper branding color
   const renderSourceIcon = (id: string) => {
     switch (id) {
@@ -119,25 +174,90 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
         <div className="flex-center gap-8">
           <h3>Connected Sources</h3>
         </div>
-        <span className="source-count-badge">{connectedCount ?? 7}</span>
+        <span className="source-count-badge">
+          {connectedCount} / {totalCount}
+        </span>
       </div>
+
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div className={`source-toast source-toast-${toastMessage.type}`}>
+          {toastMessage.type === 'success' ? (
+            <CheckCircle2 size={15} />
+          ) : (
+            <Unlink size={15} />
+          )}
+          <span>{toastMessage.text}</span>
+        </div>
+      )}
 
       {/* Sources List */}
       <div className="source-list">
-        {sources.map((src) => (
-          <div key={src.id} className="source-item-card">
-            <div className="flex-center gap-12">
-              {renderSourceIcon(src.id)}
-              <div className="source-item-info">
-                <span className="source-item-name">{src.name}</span>
-                <span className={`source-status-badge ${getBadgeClass(src.status)}`}>
-                  <span className="status-dot"></span>
-                  {src.status}
-                </span>
+        {sources.map((src) => {
+          const isLoading = actionLoadingId === src.id;
+
+          return (
+            <div key={src.id} className="source-item-card">
+              <div className="source-card-main-row">
+                <div className="flex-center gap-10 overflow-hidden">
+                  {renderSourceIcon(src.id)}
+                  <div className="source-item-info">
+                    <span className="source-item-name">{src.name}</span>
+                    <span className={`source-status-badge ${getBadgeClass(src.status)}`}>
+                      <span className="status-dot"></span>
+                      {src.status}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Connect / Disconnect Action Button */}
+                <div className="source-action-group">
+                  {src.is_connected ? (
+                    <div className="flex-center gap-4">
+                      {src.auth_type === 'credentials' && (
+                        <button
+                          type="button"
+                          className="source-icon-action-btn"
+                          title="Configure credentials"
+                          onClick={() => setSelectedSourceForModal(src)}
+                        >
+                          <Settings2 size={13} />
+                        </button>
+                      )}
+                      {src.auth_type !== 'info' && (
+                        <button
+                          type="button"
+                          className="source-btn-disconnect"
+                          disabled={isLoading}
+                          onClick={() => handleDisconnect(src)}
+                          title="Disconnect service"
+                        >
+                          {isLoading ? '...' : 'Disconnect'}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="source-btn-connect"
+                      onClick={() => handleConnect(src)}
+                    >
+                      <span>Connect</span>
+                      {src.auth_type === 'oauth' && <ExternalLink size={11} />}
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {/* Show connected user account email or path */}
+              {src.account && (
+                <div className="source-account-meta" title={src.account}>
+                  {src.account}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Quick Tips */}
@@ -161,7 +281,7 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
           </li>
           <li>
             <Check size={14} className="tip-check" />
-            <span>Ask for source references in answers</span>
+            <span>Connect all your tools to cross-reference data</span>
           </li>
         </ul>
       </div>
@@ -177,6 +297,15 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Connector Credentials Modal */}
+      {selectedSourceForModal && (
+        <ConnectorModal
+          source={selectedSourceForModal}
+          onClose={() => setSelectedSourceForModal(null)}
+          onSave={handleSaveCredentials}
+        />
+      )}
     </aside>
   );
 };

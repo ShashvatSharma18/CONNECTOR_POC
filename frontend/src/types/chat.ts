@@ -42,6 +42,17 @@ export interface ChatMessage {
   sources_accessed?: SourceAccessed[];
 }
 
+export interface ConfigField {
+  key: string;
+  label: string;
+  placeholder?: string;
+  type?: 'text' | 'password';
+  required?: boolean;
+  help_text?: string;
+  help_url?: string;
+  default_value?: string;
+}
+
 export interface ConnectorSource {
   id: string;
   name: string;
@@ -50,6 +61,10 @@ export interface ConnectorSource {
   is_connected: boolean;
   badge_color: 'green' | 'blue' | 'yellow' | 'purple' | 'gray';
   account?: string;
+  auth_type?: 'oauth' | 'credentials' | 'info';
+  auth_url?: string;
+  description?: string;
+  config_fields?: ConfigField[];
 }
 
 export interface ConnectorsStatusResponse {

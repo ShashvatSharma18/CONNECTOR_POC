@@ -15,13 +15,18 @@ load_dotenv()
 class JiraConnector:
     """Read-only Jira Cloud connector using REST API v3 and Basic Authentication."""
 
-    def __init__(self):
-        self.base_url = (os.getenv("JIRA_BASE_URL") or "").strip().rstrip("/")
-        self.email = (os.getenv("JIRA_EMAIL") or "").strip()
-        self.api_token = (os.getenv("JIRA_API_TOKEN") or "").strip()
-
-        if self.base_url and not (self.base_url.startswith("http://") or self.base_url.startswith("https://")):
-            self.base_url = f"https://{self.base_url}"
+    def __init__(
+        self,
+        base_url: str | None = None,
+        email: str | None = None,
+        api_token: str | None = None,
+    ):
+        raw_url = (base_url or os.getenv("JIRA_BASE_URL") or "").strip().rstrip("/")
+        if raw_url and not (raw_url.startswith("http://") or raw_url.startswith("https://")):
+            raw_url = f"https://{raw_url}"
+        self.base_url = raw_url
+        self.email = (email or os.getenv("JIRA_EMAIL") or "").strip()
+        self.api_token = (api_token or os.getenv("JIRA_API_TOKEN") or "").strip()
 
         missing = []
         if not self.base_url:

@@ -239,6 +239,7 @@ export const App: React.FC = () => {
         sources={sources}
         connectedCount={connectedCount}
         totalCount={totalCount}
+        onRefreshConnectors={loadConnectors}
       />
     </div>
   );

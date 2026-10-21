@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 import re
 import subprocess
 import urllib.error
@@ -18,6 +19,12 @@ class GitHubConnector:
     """Read-only GitHub connector using the existing GitHub CLI login."""
 
     def _get_token(self) -> str:
+        # Check env var first (allows user to paste token via UI)
+        env_token = os.getenv("GITHUB_ACCESS_TOKEN") or os.getenv("GH_TOKEN")
+        if env_token and env_token.strip():
+            return env_token.strip()
+
+        # Fallback to GitHub CLI
         try:
             result = subprocess.run(
                 ["gh", "auth", "token", "--hostname", "github.com"],
@@ -26,19 +33,39 @@ class GitHubConnector:
                 timeout=10,
                 check=False,
             )
-        except (OSError, subprocess.TimeoutExpired):
-            raise HTTPException(
-                status_code=503,
-                detail="Unable to access GitHub CLI authentication",
-            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+        except Exception:
+            pass
 
-        if result.returncode != 0 or not result.stdout.strip():
-            raise HTTPException(
-                status_code=401,
-                detail="GitHub CLI is not authenticated. Run gh auth login.",
-            )
+        raise HTTPException(
+            status_code=401,
+            detail="GitHub is not authenticated. Please provide a Personal Access Token or run gh auth login.",
+        )
 
-        return result.stdout.strip()
+    def get_status(self) -> dict:
+        try:
+            token = self._get_token()
+            user_data = self._request("/user")
+            return {
+                "configured": True,
+                "authenticated": True,
+                "username": user_data.get("login"),
+                "name": user_data.get("name"),
+                "email": user_data.get("email"),
+            }
+        except HTTPException as exc:
+            return {
+                "configured": False,
+                "authenticated": False,
+                "error": exc.detail,
+            }
+        except Exception as exc:
+            return {
+                "configured": False,
+                "authenticated": False,
+                "error": str(exc),
+            }
 
     def _request(self, endpoint: str, params: dict | None = None):
         token = self._get_token()
