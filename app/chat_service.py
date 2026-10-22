@@ -22,6 +22,7 @@ from app.connectors.jira import get_jira_connector
 from app.connectors.slack import get_slack_connector
 from app.connectors.postgres import DatabaseConnector
 from app.connectors.notion import get_notion_connector
+from app.connectors.google_chat import get_google_chat_connector
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -251,6 +252,7 @@ def plan_retrieval_strategy(user_text: str, prior_messages: list[dict[str, Any]]
         "WITHOUT requiring any hardcoded keywords or exact commands.\n\n"
         "Available Connected Enterprise Systems:\n"
         "- 'gmail': emails, email threads, forwarded messages, sender communications, meeting invites, Minutes of Meeting (MoM), agendas, approvals, deliverables, leaves, and daily updates.\n"
+        "- 'google_chat': Google Workspace chats, Google Chat spaces, direct messages, team chats, real-time messaging discussions.\n"
         "- 'google_drive': presentations, slides, decks, docs, spreadsheets, PDFs, files on Drive.\n"
         "- 'github': code repositories, branches, commits, pull requests, technical codebases.\n"
         "- 'slack': team chat channels, direct messages, daily standups.\n"
@@ -261,7 +263,7 @@ def plan_retrieval_strategy(user_text: str, prior_messages: list[dict[str, Any]]
         "- 'file_share': network shared folders and server files.\n\n"
         "Rules:\n"
         "1. If user is greeting ('hi', 'hello', 'good morning', 'namaste', 'thanks', 'bye') without asking for information, set 'is_pure_greeting': true and 'sources': [].\n"
-        "2. If the user asks about people, what someone sent, latest emails, meeting discussions, agendas, or approvals, include 'gmail' in 'sources'. If documents or decks are mentioned, also include 'google_drive'.\n"
+        "2. If the user asks about people, what someone sent, latest emails, meeting discussions, agendas, or approvals, include 'gmail' in 'sources'. If documents or decks are mentioned, also include 'google_drive'. If Google Chat, chat messages, or spaces are mentioned, include 'google_chat'.\n"
         "3. For 'gmail_query':\n"
         "   - Search for the PERSON or SENDER name (e.g. 'sukhpreet singh kalra') or the core topic/product name (e.g. 'Dabur India', 'Chyawanprash').\n"
         "   - IMPORTANT: DO NOT include user question/instruction words like 'agenda', 'what is in', 'details', 'summary', 'latest', 'mail', 'updates' inside 'gmail_query' itself, because those are questions for the LLM to analyze and answer from the retrieved message content.\n"
@@ -274,6 +276,7 @@ def plan_retrieval_strategy(user_text: str, prior_messages: list[dict[str, Any]]
         "  \"gmail_query\": \"sukhpreet singh kalra\",\n"
         "  \"gmail_count\": 3,\n"
         "  \"drive_query\": \"\",\n"
+        "  \"chat_query\": \"\",\n"
         "  \"github_query\": \"\",\n"
         "  \"slack_query\": \"\",\n"
         "  \"database_query\": \"\",\n"
@@ -317,6 +320,8 @@ def plan_retrieval_strategy(user_text: str, prior_messages: list[dict[str, Any]]
     )
     if has_email:
         fallback_sources.append("gmail")
+    if re.search(r"\b(google\s*chat|gchat|chat\s*space|spaces?)\b", clean, re.I):
+        fallback_sources.append("google_chat")
     if re.search(r"\b(github|repo|code|commit|branch|pr)\b", clean, re.I):
         fallback_sources.append("github")
     if re.search(r"\b(drive|google\s*doc|doc|deck|presentation|sheet)\b", clean, re.I):
@@ -339,6 +344,7 @@ def plan_retrieval_strategy(user_text: str, prior_messages: list[dict[str, Any]]
         "gmail_query": g_q,
         "gmail_count": g_cnt,
         "drive_query": clean,
+        "chat_query": clean,
         "github_query": clean,
         "slack_query": clean,
         "database_query": clean,
@@ -376,6 +382,7 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
     planned_sources = plan.get("sources", [])
 
     has_email_intent = "gmail" in planned_sources or bool(plan.get("gmail_query"))
+    has_gchat_intent = "google_chat" in planned_sources or bool(plan.get("chat_query")) or bool(re.search(r"\b(google\s*chat|gchat|chat\s*space|spaces?)\b", clean_text, re.I))
     has_drive_intent = "google_drive" in planned_sources or bool(plan.get("drive_query"))
     has_github_intent = "github" in planned_sources or bool(plan.get("github_query"))
     has_slack_intent = "slack" in planned_sources or bool(plan.get("slack_query"))
@@ -404,9 +411,11 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
             prev_cards = m["rich_cards"]
             break
 
-    if is_followup and not (has_email_intent or has_github_intent or has_sharepoint_intent or has_drive_intent or has_jira_intent or has_servicenow_intent or has_salesforce_intent or has_slack_intent or has_database_intent or has_notion_intent):
+    if is_followup and not (has_email_intent or has_gchat_intent or has_github_intent or has_sharepoint_intent or has_drive_intent or has_jira_intent or has_servicenow_intent or has_salesforce_intent or has_slack_intent or has_database_intent or has_notion_intent):
         if any(c.get("type") == "email" for c in prev_cards):
             has_email_intent = True
+        elif any(c.get("type") in ["chat", "google_chat"] for c in prev_cards):
+            has_gchat_intent = True
         elif any(c.get("type") == "repo" for c in prev_cards):
             has_github_intent = True
         elif any(c.get("type") == "slack" for c in prev_cards):
@@ -1203,6 +1212,64 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                     logger.error("Error retrieving Slack data: %s", str(e))
                     retrieved_evidence.append(f"Slack retrieval error: {str(e)}")
 
+        # J2. Google Chat Retrieval
+        if has_gchat_intent:
+            gchat_token_file = os.path.exists(".google_chat_token.json")
+            if not gchat_token_file:
+                retrieved_evidence.append(
+                    "Google Chat connector is integrated, but OAuth authentication is pending. "
+                    "Please connect Google Chat via OAuth in Knowledge Hub (visit /google-chat/auth/login)."
+                )
+                sources_accessed.append({
+                    "name": "Google Chat",
+                    "status_text": "OAuth Pending",
+                    "icon": "google_chat",
+                    "verified": False,
+                })
+            else:
+                try:
+                    gchat = get_google_chat_connector()
+                    chat_q = plan.get("chat_query") or clean_text
+                    stopwords = r"\b(google\s*chat|gchat|chat|space|spaces|messages?|show|list|get|find|search|about|what|is|in|my)\b"
+                    clean_chat_q = re.sub(stopwords, " ", chat_q, flags=re.I).strip()
+                    search_res = gchat.search_messages(clean_chat_q, max_results=6)
+                    msgs = search_res.get("messages", [])
+                    if msgs:
+                        sources_accessed.append({
+                            "name": "Google Chat",
+                            "status_text": f"Messages found ({len(msgs)})",
+                            "icon": "google_chat",
+                            "verified": True,
+                        })
+                        evidence_lines = [f"Google Chat Messages (query: '{clean_chat_q or 'recent'}'):"]
+                        for m in msgs:
+                            evidence_lines.append(
+                                f"- Space: {m.get('space_name')} | Sender: {m.get('sender')} | Time: {m.get('createTime')}\n"
+                                f"  Message: {m.get('text')}"
+                            )
+                            rich_cards.append({
+                                "type": "chat",
+                                "title": f"Chat in {m.get('space_name')}",
+                                "sender_name": m.get("sender"),
+                                "date_str": str(m.get("createTime", ""))[:19].replace("T", " "),
+                                "snippet": m.get("text"),
+                                "link": m.get("link") or "https://mail.google.com/chat",
+                                "action_label": "Open in Google Chat",
+                                "department": "Google Chat",
+                            })
+                        retrieved_evidence.append("\n".join(evidence_lines))
+                    else:
+                        retrieved_evidence.append(f"Google Chat was searched, but no messages were found for query: '{clean_chat_q}'.")
+                        sources_accessed.append({
+                            "name": "Google Chat",
+                            "status_text": "No messages found",
+                            "icon": "google_chat",
+                            "verified": True,
+                        })
+                except Exception as e:
+                    logger.error("Error retrieving Google Chat data: %s", str(e))
+                    retrieved_evidence.append(f"Google Chat retrieval error: {str(e)}")
+
         # K. SQL Database Retrieval (PostgreSQL / SQLite)
         if has_database_intent:
             db_conn = DatabaseConnector()
@@ -1445,7 +1512,7 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
         # Build prompt for Groq LLM
         system_prompt = (
             "You are Dabur One, the intelligent, trusted enterprise workplace AI assistant for Shashvat at Dabur.\n"
-            "You have access to connected enterprise sources (Gmail, Google Drive, Slack, SQL Database, Notion, SharePoint, Teams, and Local File Share).\n\n"
+            "You have access to connected enterprise sources (Gmail, Google Chat, Google Drive, Slack, SQL Database, Notion, SharePoint, Teams, and Local File Share).\n\n"
             "CRITICAL INSTRUCTIONS:\n"
             "1. Base your factual answers STRICTLY on the retrieved evidence provided below. Do NOT invent, assume, or fabricate any emails, files, senders, or content that is not present in the evidence.\n"
             "2. NEVER output ASCII or Markdown pipe tables (like | Field | Details | or | --- | --- |) for conversational replies. Instead, use clean, readable Markdown with bold headings, bullet points, and short executive paragraphs.\n"

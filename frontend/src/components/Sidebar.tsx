@@ -60,6 +60,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         return <Mail size={12} color="#DC2626" />;
       case 'google_drive':
         return <HardDrive size={12} color="#D97706" />;
+      case 'google_chat':
+        return <MessageSquare size={12} color="#16A34A" />;
       case 'slack':
         return <Hash size={12} color="#7E22CE" />;
       case 'postgres':

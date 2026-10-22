@@ -9,6 +9,7 @@ from app.connectors.github import get_github_connector
 from app.connectors.gmail import get_gmail_connector
 from app.connectors.salesforce import get_salesforce_connector
 from app.connectors.google_drive import get_google_drive_connector
+from app.connectors.google_chat import get_google_chat_connector
 from app.connectors.servicenow import get_servicenow_connector
 from app.connectors.jira import get_jira_connector
 from app.connectors.microsoft_graph import MicrosoftGraphError
@@ -270,6 +271,50 @@ def google_drive_download(file_id: str):
         media_type="application/octet-stream",
         headers={"Content-Disposition": f'attachment; filename="{clean_filename}"'},
     )
+
+
+# ==========================================
+# Google Chat Connector Endpoints
+# ==========================================
+@app.get("/google-chat/auth/login")
+def google_chat_login():
+    connector = get_google_chat_connector()
+    auth_url = connector.get_authorization_url()
+    return RedirectResponse(url=auth_url)
+
+
+@app.get("/google-chat/callback")
+def google_chat_callback(code: str = Query(...), state: str = Query(default="")):
+    connector = get_google_chat_connector()
+    connector.exchange_code_for_token(code)
+    return RedirectResponse(url="http://localhost:5173/?connected=google_chat")
+
+
+@app.get("/google-chat/status")
+def google_chat_status():
+    connector = get_google_chat_connector()
+    return connector.get_status()
+
+
+@app.get("/google-chat/spaces")
+def google_chat_list_spaces(page_size: int = Query(default=30, ge=1, le=100)):
+    connector = get_google_chat_connector()
+    return connector.list_spaces(page_size=page_size)
+
+
+@app.get("/google-chat/spaces/{space_id}/messages")
+def google_chat_list_messages(space_id: str, page_size: int = Query(default=20, ge=1, le=50)):
+    connector = get_google_chat_connector()
+    return connector.list_messages(space_name=space_id, page_size=page_size)
+
+
+@app.get("/google-chat/messages/search")
+def google_chat_search_messages(
+    query: str = Query(default="", description="Search query terms or sender"),
+    max_results: int = Query(default=15, ge=1, le=50),
+):
+    connector = get_google_chat_connector()
+    return connector.search_messages(query=query, max_results=max_results)
 
 
 # ==========================================

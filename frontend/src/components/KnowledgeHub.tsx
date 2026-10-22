@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   Check,
   Filter,
+  MessageSquare,
 } from 'lucide-react';
 import { ConnectorSource } from '../types/chat';
 
@@ -75,6 +76,12 @@ export const KnowledgeHub: React.FC<KnowledgeHubProps> = ({
         return (
           <div style={{ background: '#FEF3C7', color: '#D97706' }} className="kh-icon-container">
             <HardDrive size={22} />
+          </div>
+        );
+      case 'google_chat':
+        return (
+          <div style={{ background: '#DCFCE7', color: '#16A34A' }} className="kh-icon-container">
+            <MessageSquare size={22} />
           </div>
         );
       case 'slack':
@@ -146,6 +153,8 @@ export const KnowledgeHub: React.FC<KnowledgeHubProps> = ({
       case 'gmail':
       case 'google_drive':
         return 'Google Workspace';
+      case 'google_chat':
+        return 'Google Workspace Chat';
       case 'slack':
         return 'Team Communication';
       case 'postgres':

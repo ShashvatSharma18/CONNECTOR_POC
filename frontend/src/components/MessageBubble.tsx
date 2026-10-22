@@ -8,6 +8,8 @@ import {
   Database,
   Hash,
   HardDrive,
+  MessageSquare,
+  GitBranch,
 } from 'lucide-react';
 import { ChatMessage, RichCard } from '../types/chat';
 
@@ -323,15 +325,44 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           </div>
 
         {/* Source metadata pill */}
-        {message.rich_cards && message.rich_cards.length > 0 && (
-          <div className="assistant-source-header">
-            <span className="source-tag-pill">
-              <Mail size={13} color="#EA4335" />
-              <span>Gmail</span>
-            </span>
-            <span>{message.rich_cards.length} relevant emails found • Latest first</span>
-          </div>
-        )}
+        {message.rich_cards && message.rich_cards.length > 0 && (() => {
+          const isChat = message.rich_cards.some((c) => c.type === 'chat' || c.type === 'google_chat');
+          const isDoc = message.rich_cards.some((c) => c.type === 'document');
+          const isRepo = message.rich_cards.some((c) => c.type === 'repo');
+          const isSlack = message.rich_cards.some((c) => c.type === 'slack');
+
+          let sourceIcon = <Mail size={13} color="#EA4335" />;
+          let sourceLabel = 'Gmail';
+          let sourceDetail = `${message.rich_cards.length} relevant emails found • Latest first`;
+
+          if (isChat) {
+            sourceIcon = <MessageSquare size={13} color="#16A34A" />;
+            sourceLabel = 'Google Chat';
+            sourceDetail = `${message.rich_cards.length} messages found • Space discussions`;
+          } else if (isDoc) {
+            sourceIcon = <HardDrive size={13} color="#D97706" />;
+            sourceLabel = 'Google Drive';
+            sourceDetail = `${message.rich_cards.length} documents found`;
+          } else if (isSlack) {
+            sourceIcon = <Hash size={13} color="#7E22CE" />;
+            sourceLabel = 'Slack';
+            sourceDetail = `${message.rich_cards.length} messages found`;
+          } else if (isRepo) {
+            sourceIcon = <GitBranch size={13} color="#6D28D9" />;
+            sourceLabel = 'GitHub';
+            sourceDetail = `${message.rich_cards.length} repositories found`;
+          }
+
+          return (
+            <div className="assistant-source-header">
+              <span className="source-tag-pill">
+                {sourceIcon}
+                <span>{sourceLabel}</span>
+              </span>
+              <span>{sourceDetail}</span>
+            </div>
+          );
+        })()}
 
         {/* Cards List */}
         {message.rich_cards && message.rich_cards.length > 0 && (
@@ -341,11 +372,41 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               const avatarBg = card.badge_color || getAvatarColor(initials);
               const dept = card.department || 'General';
 
+              const renderCardIcon = () => {
+                switch (card.type) {
+                  case 'chat':
+                  case 'google_chat':
+                    return <MessageSquare size={16} color="#16A34A" className="card-service-icon" />;
+                  case 'document':
+                    return <HardDrive size={16} color="#D97706" className="card-service-icon" />;
+                  case 'slack':
+                    return <Hash size={16} color="#7E22CE" className="card-service-icon" />;
+                  case 'repo':
+                    return <GitBranch size={16} color="#6D28D9" className="card-service-icon" />;
+                  default:
+                    return <Mail size={16} color="#EA4335" className="card-service-icon" />;
+                }
+              };
+
+              const handleActionClick = () => {
+                const rawLink = card.link || '';
+                if (card.type === 'email' || rawLink.includes('mail.google.com') || rawLink.includes('/gmail/messages/')) {
+                  const target = rawLink.includes('mail.google.com')
+                    ? rawLink
+                    : (rawLink.match(/\/gmail\/messages\/([a-zA-Z0-9]+)/)
+                        ? `https://mail.google.com/mail/#all/${rawLink.match(/\/gmail\/messages\/([a-zA-Z0-9]+)/)![1]}`
+                        : rawLink || 'https://mail.google.com');
+                  window.open(target, '_blank', 'noopener,noreferrer');
+                } else if (rawLink) {
+                  window.open(rawLink, '_blank', 'noopener,noreferrer');
+                }
+              };
+
               return (
                 <div key={idx} className="email-result-card">
                   <div className="card-left-group">
                     {/* Service Icon */}
-                    <Mail size={16} color="#EA4335" className="card-service-icon" />
+                    {renderCardIcon()}
 
                     {/* Sender Initials Avatar */}
                     <div
@@ -355,20 +416,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                       {initials}
                     </div>
 
-                      {/* Subject, sender, snippet */}
+                    {/* Subject, sender, snippet */}
                     <div className="card-details-column">
                       <div className="card-title-row">
                         <span
                           className="card-subject"
-                          onClick={() => {
-                            const rawLink = card.link || '';
-                            const target = rawLink.includes('mail.google.com')
-                              ? rawLink
-                              : (rawLink.match(/\/gmail\/messages\/([a-zA-Z0-9]+)/)
-                                  ? `https://mail.google.com/mail/#all/${rawLink.match(/\/gmail\/messages\/([a-zA-Z0-9]+)/)![1]}`
-                                  : rawLink || 'https://mail.google.com');
-                            window.open(target, '_blank', 'noopener,noreferrer');
-                          }}
+                          onClick={handleActionClick}
                         >
                           {card.title}
                         </span>
@@ -385,22 +438,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     </div>
                   </div>
 
-                  {/* Right Side: View email & department badge */}
+                  {/* Right Side: View action & department badge */}
                   <div className="card-right-group">
                     <button
                       className="btn-view-email"
-                      onClick={() => {
-                        const rawLink = card.link || '';
-                        const target = rawLink.includes('mail.google.com')
-                          ? rawLink
-                          : (rawLink.match(/\/gmail\/messages\/([a-zA-Z0-9]+)/)
-                              ? `https://mail.google.com/mail/#all/${rawLink.match(/\/gmail\/messages\/([a-zA-Z0-9]+)/)![1]}`
-                              : rawLink || 'https://mail.google.com');
-                        window.open(target, '_blank', 'noopener,noreferrer');
-                      }}
-                      title="Open this email in Gmail"
+                      onClick={handleActionClick}
+                      title={`Open in ${dept}`}
                     >
-                      <span>{card.action_label || 'View email'}</span>
+                      <span>{card.action_label || (card.type === 'chat' ? 'Open Chat' : 'View email')}</span>
                       <ExternalLink size={12} />
                     </button>
 

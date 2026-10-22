@@ -13,7 +13,7 @@ export interface RichCardAttachment {
 }
 
 export interface RichCard {
-  type: 'document' | 'teams_message' | 'email' | 'repo' | 'slack' | 'database' | 'notion';
+  type: 'document' | 'teams_message' | 'email' | 'repo' | 'slack' | 'database' | 'notion' | 'chat' | 'google_chat';
   title: string;
   metadata?: string;
   snippet?: string;

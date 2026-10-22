@@ -16,6 +16,7 @@ import {
   Folder,
   GraduationCap,
   Search,
+  MessageSquare,
 } from 'lucide-react';
 import { ConnectorSource } from '../types/chat';
 
@@ -62,6 +63,8 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         return <Mail size={13} color="#EA4335" />;
       case 'google_drive':
         return <HardDrive size={13} color="#D97706" />;
+      case 'google_chat':
+        return <MessageSquare size={13} color="#16A34A" />;
       case 'slack':
         return <Hash size={13} color="#7E22CE" />;
       case 'postgres':

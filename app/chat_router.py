@@ -113,6 +113,12 @@ def get_google_drive_account():
     return None
 
 
+def get_google_chat_account():
+    if os.path.exists(".google_chat_token.json"):
+        return get_gmail_account() or "Connected"
+    return None
+
+
 # ---------------- Connectors Status & Configuration ----------------
 @router.get("/connectors/status")
 def get_connectors_status():
@@ -127,6 +133,7 @@ def get_connectors_status():
     )
     ado_configured = bool(os.getenv("AZURE_DEVOPS_ORG_URL") and os.getenv("AZURE_DEVOPS_PAT"))
     google_drive_token_file = os.path.exists(".google_drive_token.json")
+    google_chat_token_file = os.path.exists(".google_chat_token.json")
     slack_token = bool(os.getenv("SLACK_BOT_TOKEN"))
     db_configured = bool(os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL") or os.path.exists("data/chat_history.db"))
     notion_configured = bool(os.getenv("NOTION_API_KEY"))
@@ -198,6 +205,19 @@ def get_connectors_status():
             "auth_type": "oauth",
             "auth_url": "http://localhost:8000/google-drive/auth/login",
             "description": "Read, search, and export Google Docs, Sheets, and drive files.",
+            "config_fields": [],
+        },
+        {
+            "id": "google_chat",
+            "name": "Google Chat",
+            "type": "chat",
+            "status": "Live" if google_chat_token_file else "Not Connected",
+            "is_connected": bool(google_chat_token_file),
+            "badge_color": "green" if google_chat_token_file else "gray",
+            "account": get_google_chat_account(),
+            "auth_type": "oauth",
+            "auth_url": "http://localhost:8000/google-chat/auth/login",
+            "description": "Access direct messages, spaces, and team conversations across Google Workspace.",
             "config_fields": [],
         },
         {
@@ -607,6 +627,11 @@ def disconnect_connector(payload: DisconnectConnectorRequest):
         if os.path.exists(".google_drive_token.json"):
             os.remove(".google_drive_token.json")
         return {"status": "disconnected", "message": "Google Drive disconnected."}
+
+    elif cid in ["google_chat", "googlechat"]:
+        if os.path.exists(".google_chat_token.json"):
+            os.remove(".google_chat_token.json")
+        return {"status": "disconnected", "message": "Google Chat disconnected."}
  
     elif cid == "slack":
         update_env_file({"SLACK_BOT_TOKEN": None})
