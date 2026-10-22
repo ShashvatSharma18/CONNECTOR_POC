@@ -1,11 +1,12 @@
 import React, { useEffect, useRef } from 'react';
 import { ShieldCheck } from 'lucide-react';
-import { ChatMessage } from '../types/chat';
+import { ChatMessage, ConnectorSource } from '../types/chat';
 import { MessageBubble } from './MessageBubble';
 import { MessageComposer } from './MessageComposer';
 
 interface ChatWindowProps {
   messages: ChatMessage[];
+  sources?: ConnectorSource[];
   onSendMessage: (content: string) => void;
   onOpenAddSources?: () => void;
   isLoading?: boolean;
@@ -13,6 +14,7 @@ interface ChatWindowProps {
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   messages,
+  sources = [],
   onSendMessage,
   onOpenAddSources,
   isLoading = false,
@@ -91,6 +93,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {/* Bottom Composer */}
       <MessageComposer
+        sources={sources}
         onSendMessage={onSendMessage}
         onOpenAddSources={onOpenAddSources}
         disabled={isLoading}

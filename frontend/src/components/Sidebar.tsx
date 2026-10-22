@@ -2,56 +2,24 @@ import React from 'react';
 import {
   MessageSquare,
   Sparkles,
-  Layers,
   BookOpen,
   Clock,
   Settings,
-  HeartPulse,
-  Sparkle,
-  Smile,
-  Home,
-  UtensilsCrossed,
 } from 'lucide-react';
 
 interface SidebarProps {
   activeTab?: string;
   onSelectTab?: (tab: string) => void;
-  onOpenSourcesModal?: () => void;
+  connectedCount?: number;
+  totalCount?: number;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab = 'chat',
   onSelectTab,
-  onOpenSourcesModal,
+  connectedCount = 0,
+  totalCount = 0,
 }) => {
-  const businessUnits = [
-    {
-      name: 'Healthcare',
-      subtitle: 'Ayurveda & Wellness',
-      icon: HeartPulse,
-    },
-    {
-      name: 'Personal Care',
-      subtitle: 'Skin & Hair Care',
-      icon: Sparkle,
-    },
-    {
-      name: 'Oral Care',
-      subtitle: 'Healthy Smiles',
-      icon: Smile,
-    },
-    {
-      name: 'Home Care',
-      subtitle: 'Clean & Safe',
-      icon: Home,
-    },
-    {
-      name: 'Foods',
-      subtitle: 'Nutrition & Taste',
-      icon: UtensilsCrossed,
-    },
-  ];
-
   return (
     <aside className="dabur-sidebar">
       {/* Top Primary Navigation */}
@@ -59,6 +27,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <button
           className={`sidebar-nav-item ${activeTab === 'chat' ? 'active' : ''}`}
           onClick={() => onSelectTab && onSelectTab('chat')}
+          title="Open AI Chat Assistant"
         >
           <MessageSquare size={17} className="nav-icon" />
           <span>Chat</span>
@@ -66,27 +35,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
 
         <button
-          className={`sidebar-nav-item ${activeTab === 'sources' ? 'active' : ''}`}
-          onClick={() => {
-            if (onOpenSourcesModal) onOpenSourcesModal();
-            else if (onSelectTab) onSelectTab('sources');
-          }}
-        >
-          <Layers size={17} className="nav-icon" />
-          <span>Sources</span>
-        </button>
-
-        <button
           className={`sidebar-nav-item ${activeTab === 'knowledge' ? 'active' : ''}`}
           onClick={() => onSelectTab && onSelectTab('knowledge')}
+          title="Manage connected enterprise sources"
         >
           <BookOpen size={17} className="nav-icon" />
           <span>Knowledge Hub</span>
+          {totalCount > 0 && (
+            <span
+              style={{
+                marginLeft: 'auto',
+                background: connectedCount > 0 ? '#E8F5E9' : '#F1F5F9',
+                color: connectedCount > 0 ? '#164E33' : '#64748B',
+                fontSize: '10.5px',
+                fontWeight: 700,
+                padding: '2px 7px',
+                borderRadius: '9999px',
+                border: '1px solid',
+                borderColor: connectedCount > 0 ? '#C8E6C9' : '#E2E8F0',
+              }}
+            >
+              {connectedCount}/{totalCount}
+            </span>
+          )}
         </button>
 
         <button
           className={`sidebar-nav-item ${activeTab === 'history' ? 'active' : ''}`}
           onClick={() => onSelectTab && onSelectTab('history')}
+          title="View conversation history"
         >
           <Clock size={17} className="nav-icon" />
           <span>History</span>
@@ -95,31 +72,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <button
           className={`sidebar-nav-item ${activeTab === 'settings' ? 'active' : ''}`}
           onClick={() => onSelectTab && onSelectTab('settings')}
+          title="Application settings"
         >
           <Settings size={17} className="nav-icon" />
           <span>Settings</span>
         </button>
       </nav>
-
-      {/* Our Business Section */}
-      <div className="business-units-section">
-        <span className="business-section-title">Our Business</span>
-
-        {businessUnits.map((bu, idx) => {
-          const IconComp = bu.icon;
-          return (
-            <div key={idx} className="business-unit-item">
-              <div className="bu-icon-badge">
-                <IconComp size={15} />
-              </div>
-              <div className="bu-meta">
-                <span className="bu-name">{bu.name}</span>
-                <span className="bu-subtitle">{bu.subtitle}</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
 
       {/* Botanical Footer with Dabur Motto */}
       <div className="sidebar-botanical-footer">

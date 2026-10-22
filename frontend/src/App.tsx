@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { ChatWindow } from './components/ChatWindow';
+import { KnowledgeHub } from './components/KnowledgeHub';
 import { SourcePanel } from './components/SourcePanel';
 import { ConnectorModal } from './components/ConnectorModal';
 import {
@@ -20,10 +21,12 @@ import {
   fetchSessions,
   sendChatMessage,
   configureConnector,
+  disconnectConnector,
 } from './services/api';
 import { Search, Bell, ChevronDown } from 'lucide-react';
 
 export const App: React.FC = () => {
+  const [activeNavTab, setActiveNavTab] = useState<'chat' | 'knowledge' | 'history' | 'settings'>('chat');
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -33,6 +36,7 @@ export const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [topSearchQuery, setTopSearchQuery] = useState('');
   const [modalSource, setModalSource] = useState<ConnectorSource | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   // Load initial data
   useEffect(() => {
@@ -305,23 +309,49 @@ export const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Body: Left Sidebar + Center Chat + Right Source Panel */}
+      {/* Main Body: Left Sidebar + Center Workspace (Chat or KnowledgeHub) + Right Source Panel */}
       <div className="main-body-content">
         <Sidebar
-          activeTab="chat"
-          onOpenSourcesModal={() => {
-            if (sources.length > 0) setModalSource(sources[0]);
-          }}
+          activeTab={activeNavTab}
+          onSelectTab={(tab) => setActiveNavTab(tab as any)}
+          connectedCount={connectedCount}
+          totalCount={totalCount}
         />
 
-        <ChatWindow
-          messages={messages}
-          onSendMessage={handleSendMessage}
-          onOpenAddSources={() => {
-            if (sources.length > 0) setModalSource(sources[0]);
-          }}
-          isLoading={isLoading}
-        />
+        {activeNavTab === 'knowledge' ? (
+          <KnowledgeHub
+            sources={sources}
+            onRefreshConnectors={loadConnectors}
+            onConnectClick={(source) => {
+              if (source.auth_type === 'oauth' && source.auth_url) {
+                window.location.href = source.auth_url;
+              } else {
+                setModalSource(source);
+              }
+            }}
+            onDisconnectClick={async (source) => {
+              setActionLoadingId(source.id);
+              try {
+                await disconnectConnector(source.id);
+                await loadConnectors();
+              } catch (err) {
+                console.error('Error disconnecting connector:', err);
+              } finally {
+                setActionLoadingId(null);
+              }
+            }}
+            onSwitchToChat={() => setActiveNavTab('chat')}
+            isLoadingSourceId={actionLoadingId}
+          />
+        ) : (
+          <ChatWindow
+            messages={messages}
+            sources={sources}
+            onSendMessage={handleSendMessage}
+            onOpenAddSources={() => setActiveNavTab('knowledge')}
+            isLoading={isLoading}
+          />
+        )}
 
         <SourcePanel
           sources={sources}

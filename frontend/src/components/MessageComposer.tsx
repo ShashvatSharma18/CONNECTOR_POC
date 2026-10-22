@@ -9,30 +9,42 @@ import {
   Hash,
   Database,
   FileText,
+  GitBranch,
+  Layers,
+  Users,
+  Box,
+  Folder,
+  GraduationCap,
+  Search,
 } from 'lucide-react';
+import { ConnectorSource } from '../types/chat';
 
 interface MessageComposerProps {
   onSendMessage: (content: string) => void;
   onOpenAddSources?: () => void;
+  sources?: ConnectorSource[];
   disabled?: boolean;
 }
 
 export const MessageComposer: React.FC<MessageComposerProps> = ({
   onSendMessage,
   onOpenAddSources,
+  sources = [],
   disabled = false,
 }) => {
   const [input, setInput] = useState('');
-  const [selectedSources, setSelectedSources] = useState<string[]>([
-    'gmail',
-    'drive',
-    'slack',
-    'database',
-    'notion',
-  ]);
 
+  // Filter ONLY sources that are actually connected and eligible
+  const excludedIds = ['servicenow', 'salesforce', 'jira'];
+  const connectedSources = sources.filter(
+    (s) => s.is_connected && !excludedIds.includes(s.id.toLowerCase())
+  );
+
+  const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
+
+  // Toggle selection filter if user wants to target specific connected sources
   const toggleSource = (id: string) => {
-    setSelectedSources((prev) =>
+    setSelectedSourceIds((prev) =>
       prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
     );
   };
@@ -44,13 +56,35 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     setInput('');
   };
 
-  const sourcesList = [
-    { id: 'gmail', label: 'Gmail', icon: Mail, color: '#EA4335' },
-    { id: 'drive', label: 'Drive', icon: HardDrive, color: '#F59E0B' },
-    { id: 'slack', label: 'Slack', icon: Hash, color: '#7E22CE' },
-    { id: 'database', label: 'Database', icon: Database, color: '#0284C7' },
-    { id: 'notion', label: 'Notion', icon: FileText, color: '#374151' },
-  ];
+  const getSourceIcon = (id: string) => {
+    switch (id) {
+      case 'gmail':
+        return <Mail size={13} color="#EA4335" />;
+      case 'google_drive':
+        return <HardDrive size={13} color="#D97706" />;
+      case 'slack':
+        return <Hash size={13} color="#7E22CE" />;
+      case 'postgres':
+      case 'database':
+        return <Database size={13} color="#0284C7" />;
+      case 'notion':
+        return <FileText size={13} color="#374151" />;
+      case 'github':
+        return <GitBranch size={13} color="#6D28D9" />;
+      case 'sharepoint':
+        return <Layers size={13} color="#0F766E" />;
+      case 'teams':
+        return <Users size={13} color="#4338CA" />;
+      case 'azure_devops':
+        return <Box size={13} color="#0369A1" />;
+      case 'file_share':
+        return <Folder size={13} color="#00838F" />;
+      case 'lms':
+        return <GraduationCap size={13} color="#C2410C" />;
+      default:
+        return <Search size={13} color="#64748B" />;
+    }
+  };
 
   return (
     <div className="composer-wrapper">
@@ -85,30 +119,40 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
       {/* Bottom Connected Sources Quick-Filter Pills */}
       <div className="composer-sources-row">
-        {sourcesList.map((src) => {
-          const IconC = src.icon;
-          const isActive = selectedSources.includes(src.id);
-          return (
-            <button
-              key={src.id}
-              type="button"
-              className={`quick-source-chip ${isActive ? 'active' : ''}`}
-              onClick={() => toggleSource(src.id)}
-            >
-              <IconC size={13} color={src.color} />
-              <span>{src.label}</span>
-              {isActive && <Check size={11} className="text-green-700" />}
-            </button>
-          );
-        })}
+        {connectedSources.length > 0 ? (
+          connectedSources.map((src) => {
+            const isTargeted =
+              selectedSourceIds.length === 0 || selectedSourceIds.includes(src.id);
+
+            return (
+              <button
+                key={src.id}
+                type="button"
+                className={`quick-source-chip ${isTargeted ? 'active' : ''}`}
+                onClick={() => toggleSource(src.id)}
+                title={`Connected: ${src.name}${src.account ? ` (${src.account})` : ''}`}
+              >
+                {getSourceIcon(src.id)}
+                <span>{src.name}</span>
+                <span className="chip-active-dot"></span>
+                {isTargeted && <Check size={11} className="text-green-700" />}
+              </button>
+            );
+          })
+        ) : (
+          <span className="composer-no-sources-hint">
+            No sources connected yet.
+          </span>
+        )}
 
         <button
           type="button"
           className="btn-add-sources-chip"
           onClick={onOpenAddSources}
+          title="Connect or configure enterprise knowledge sources"
         >
           <Plus size={12} style={{ display: 'inline', marginRight: '4px' }} />
-          <span>Add sources</span>
+          <span>Connect sources</span>
         </button>
       </div>
     </div>
