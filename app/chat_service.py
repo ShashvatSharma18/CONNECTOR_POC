@@ -509,10 +509,19 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                         "verified": True,
                     })
 
+                    # Get authenticated user email for precise account URL
+                    user_email = ""
+                    try:
+                        u_stat = gmail.get_status()
+                        user_email = u_stat.get("email_address", "")
+                    except Exception:
+                        pass
+
                     # Fetch full details of target messages
                     for idx, m_meta in enumerate(messages_list[:fetch_count]):
                         m_id = m_meta["id"]
                         full_msg = gmail.get_message(m_id)
+                        thread_id = full_msg.get("thread_id") or m_id
                         subject = html.unescape(full_msg.get("subject", "(No Subject)"))
                         sender = html.unescape(full_msg.get("from", "Unknown"))
                         raw_date = full_msg.get("date", "")
@@ -549,12 +558,19 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                                 "download_url": att_url,
                             })
 
+                        # Deep link directly to email in Gmail web
+                        gmail_web_link = (
+                            f"https://mail.google.com/mail/u/{user_email}/#all/{thread_id}"
+                            if user_email
+                            else f"https://mail.google.com/mail/#all/{thread_id}"
+                        )
+
                         rich_cards.append({
                             "type": "email",
                             "title": subject,
                             "metadata": f"Gmail • From: {sender} • {date}",
                             "snippet": clean_snippet or (body[:150] + "..."),
-                            "link": f"http://localhost:8000/gmail/messages/{m_id}",
+                            "link": gmail_web_link,
                             "action_label": "View Email",
                             "attachments": card_attachments,
                         })

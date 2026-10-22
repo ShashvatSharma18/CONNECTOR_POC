@@ -191,6 +191,21 @@ def gmail_get_message(message_id: str):
     return connector.get_message(message_id)
 
 
+@app.get("/gmail/messages/{message_id}/open")
+def gmail_open_in_web(message_id: str):
+    connector = get_gmail_connector()
+    msg = connector.get_message(message_id)
+    thread_id = msg.get("thread_id") or message_id
+    status = connector.get_status()
+    user_email = status.get("email_address", "")
+    target_url = (
+        f"https://mail.google.com/mail/u/{user_email}/#all/{thread_id}"
+        if user_email
+        else f"https://mail.google.com/mail/#all/{thread_id}"
+    )
+    return RedirectResponse(url=target_url)
+
+
 @app.get("/gmail/messages/{message_id}/attachments/{attachment_id}")
 def gmail_download_attachment(
     message_id: str,

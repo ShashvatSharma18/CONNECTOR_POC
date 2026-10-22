@@ -355,12 +355,20 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                       {initials}
                     </div>
 
-                    {/* Subject, sender, snippet */}
+                      {/* Subject, sender, snippet */}
                     <div className="card-details-column">
                       <div className="card-title-row">
                         <span
                           className="card-subject"
-                          onClick={() => card.link && window.open(card.link, '_blank')}
+                          onClick={() => {
+                            const rawLink = card.link || '';
+                            const target = rawLink.includes('mail.google.com')
+                              ? rawLink
+                              : (rawLink.match(/\/gmail\/messages\/([a-zA-Z0-9]+)/)
+                                  ? `https://mail.google.com/mail/#all/${rawLink.match(/\/gmail\/messages\/([a-zA-Z0-9]+)/)![1]}`
+                                  : rawLink || 'https://mail.google.com');
+                            window.open(target, '_blank', 'noopener,noreferrer');
+                          }}
                         >
                           {card.title}
                         </span>
@@ -381,7 +389,16 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   <div className="card-right-group">
                     <button
                       className="btn-view-email"
-                      onClick={() => card.link && window.open(card.link, '_blank')}
+                      onClick={() => {
+                        const rawLink = card.link || '';
+                        const target = rawLink.includes('mail.google.com')
+                          ? rawLink
+                          : (rawLink.match(/\/gmail\/messages\/([a-zA-Z0-9]+)/)
+                              ? `https://mail.google.com/mail/#all/${rawLink.match(/\/gmail\/messages\/([a-zA-Z0-9]+)/)![1]}`
+                              : rawLink || 'https://mail.google.com');
+                        window.open(target, '_blank', 'noopener,noreferrer');
+                      }}
+                      title="Open this email in Gmail"
                     >
                       <span>{card.action_label || 'View email'}</span>
                       <ExternalLink size={12} />
