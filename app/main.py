@@ -166,9 +166,18 @@ def gmail_login():
 
 @app.get("/gmail/callback")
 def gmail_callback(code: str = Query(...), state: str = Query(default="")):
-    connector = get_gmail_connector()
-    connector.exchange_code_for_token(code)
-    return RedirectResponse(url="http://localhost:5173/?connected=gmail")
+    if state == "gchat_auth_state":
+        connector = get_google_chat_connector()
+        connector.exchange_code_for_token(code)
+        return RedirectResponse(url="http://localhost:5173/?connected=google_chat")
+    elif state == "gdrive_auth_state":
+        connector = get_google_drive_connector()
+        connector.exchange_code_for_token(code)
+        return RedirectResponse(url="http://localhost:5173/?connected=google_drive")
+    else:
+        connector = get_gmail_connector()
+        connector.exchange_code_for_token(code)
+        return RedirectResponse(url="http://localhost:5173/?connected=gmail")
 
 
 @app.get("/gmail/status")

@@ -38,7 +38,7 @@ class GoogleChatConnector:
         self.client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
         self.redirect_uri = os.getenv(
             "GOOGLE_CHAT_REDIRECT_URI",
-            "http://localhost:8000/google-chat/callback",
+            os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/gmail/callback"),
         )
 
         if not self.client_id or not self.client_secret:
