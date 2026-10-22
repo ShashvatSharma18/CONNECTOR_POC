@@ -1,5 +1,13 @@
 import React, { useEffect, useRef } from 'react';
-import { ShieldCheck } from 'lucide-react';
+import {
+  ShieldCheck,
+  Sparkles,
+  Mail,
+  Calendar,
+  HardDrive,
+  ArrowRight,
+  Bot,
+} from 'lucide-react';
 import { ChatMessage, ConnectorSource } from '../types/chat';
 import { MessageBubble } from './MessageBubble';
 import { MessageComposer } from './MessageComposer';
@@ -25,6 +33,37 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
+  const quickPrompts = [
+    {
+      icon: Mail,
+      title: 'Latest Email Briefing',
+      desc: 'Check your newest email and extract pending actions',
+      prompt: 'What is in my last email?',
+      color: '#EA4335',
+    },
+    {
+      icon: Sparkles,
+      title: 'Chyawanprash Launch',
+      desc: 'Summarize campaign status, creative assets, and sales alignment',
+      prompt: 'Find the latest emails about the Chyawanprash launch and summarize pending actions.',
+      color: '#164E33',
+    },
+    {
+      icon: Calendar,
+      title: '3-Day Absence Catch-up',
+      desc: 'Get prioritized delta updates from the last 3 days',
+      prompt: 'I was away for 3 days. What happened while I was away?',
+      color: '#0284C7',
+    },
+    {
+      icon: HardDrive,
+      title: 'Drive Documents',
+      desc: 'Retrieve and inspect latest modified files in Google Drive',
+      prompt: 'Search Google Drive for latest project files.',
+      color: '#D97706',
+    },
+  ];
+
   return (
     <main className="chat-workspace">
       {/* Top Banner inside Chat */}
@@ -38,66 +77,106 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           </div>
           <div className="banner-text">
             <h2>Dabur One</h2>
-            <p>Your AI workplace assistant for smarter, faster search across all your connected tools.</p>
+            <p>Enterprise AI Workplace Assistant • Verified RAG Multi-Source Search</p>
           </div>
         </div>
 
         <div className="enterprise-badge">
           <ShieldCheck size={14} />
-          <span>Enterprise</span>
+          <span>Enterprise Secure</span>
         </div>
       </header>
 
       {/* Messages Scroll Area */}
       <div className="chat-messages-container">
-        {messages.map((msg) => (
-          <MessageBubble
-            key={msg.id}
-            message={msg}
-            onFollowupClick={(prompt) => onSendMessage(prompt)}
-          />
-        ))}
+        <div className="chat-content-container">
+          {messages.length === 0 ? (
+            <div className="chat-welcome-hero">
+              <div className="welcome-leaf-circle">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+                  <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+                </svg>
+              </div>
 
-        {isLoading && (
-          <div className="assistant-message-row">
-            <div className="assistant-avatar-badge">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
-                <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
-              </svg>
-            </div>
-            <div className="assistant-content-wrapper">
-              <div
-                style={{
-                  background: '#FFFFFF',
-                  padding: '12px 18px',
-                  borderRadius: '12px',
-                  border: '1px solid #E2E8F0',
-                  fontSize: '13px',
-                  color: '#164E33',
-                  fontWeight: 500,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
-                }}
-              >
-                <span>Searching connected enterprise sources...</span>
+              <h1 className="welcome-title">Good day, Shashvat</h1>
+              <p className="welcome-subtitle">
+                Ask anything across your connected Gmail, Google Drive, Slack, SQL Database, Notion, and GitHub.
+              </p>
+
+              <div className="quick-prompts-grid">
+                {quickPrompts.map((item, idx) => {
+                  const IconC = item.icon;
+                  return (
+                    <div
+                      key={idx}
+                      className="quick-prompt-card"
+                      onClick={() => onSendMessage(item.prompt)}
+                    >
+                      <div className="quick-prompt-top">
+                        <div
+                          className="prompt-icon-badge"
+                          style={{ color: item.color, background: `${item.color}15` }}
+                        >
+                          <IconC size={18} />
+                        </div>
+                        <ArrowRight size={14} className="prompt-arrow-icon" />
+                      </div>
+                      <h4 className="prompt-card-title">{item.title}</h4>
+                      <p className="prompt-card-desc">{item.desc}</p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="messages-stream">
+              {messages.map((msg) => (
+                <MessageBubble
+                  key={msg.id}
+                  message={msg}
+                  onFollowupClick={(prompt) => onSendMessage(prompt)}
+                />
+              ))}
 
-        <div ref={messagesEndRef} />
+              {isLoading && (
+                <div className="assistant-message-row">
+                  <div className="assistant-avatar-badge">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+                      <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+                    </svg>
+                  </div>
+                  <div className="assistant-content-wrapper">
+                    <div className="assistant-bubble-card searching-indicator-card">
+                      <div className="searching-pulse-row">
+                        <span className="searching-spinner"></span>
+                        <span className="searching-text">
+                          Retrieving and synthesizing enterprise knowledge...
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
       {/* Bottom Composer */}
-      <MessageComposer
-        sources={sources}
-        onSendMessage={onSendMessage}
-        onOpenAddSources={onOpenAddSources}
-        disabled={isLoading}
-      />
+      <div className="chat-composer-outer">
+        <div className="chat-content-container">
+          <MessageComposer
+            sources={sources}
+            onSendMessage={onSendMessage}
+            onOpenAddSources={onOpenAddSources}
+            disabled={isLoading}
+          />
+        </div>
+      </div>
     </main>
   );
 };

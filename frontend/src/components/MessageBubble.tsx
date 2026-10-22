@@ -224,29 +224,56 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       // Not a table line, flush pending table
       flushTable(`line-${i}`);
 
-      // Headers
-      if (line.startsWith('### ')) {
+      // Horizontal dividers (---, ___, ***)
+      if (/^[-*_]{3,}$/.test(line)) {
+        flushList(`hr-${i}`);
+        elements.push(<div key={`hr-${i}`} className="content-divider" />);
+        continue;
+      }
+
+      // Headers (# to ######)
+      if (/^#{1,6}\s+/.test(line)) {
         flushList(`line-${i}`);
-        elements.push(
-          <h4 key={`h4-${i}`} className="content-h3">
-            {parseInlineMarkdown(line.slice(4))}
-          </h4>
-        );
-      } else if (line.startsWith('## ')) {
-        flushList(`line-${i}`);
-        elements.push(
-          <h3 key={`h3-${i}`} className="content-h2">
-            {parseInlineMarkdown(line.slice(3))}
-          </h3>
-        );
-      } else if (line.startsWith('# ')) {
-        flushList(`line-${i}`);
-        elements.push(
-          <h2 key={`h2-${i}`} className="content-h1">
-            {parseInlineMarkdown(line.slice(2))}
-          </h2>
-        );
-      } else if (/^[-*•]\s+/.test(line)) {
+        const headerMatch = line.match(/^(#{1,6})\s+(.*)$/);
+        if (headerMatch) {
+          const level = headerMatch[1].length;
+          const text = headerMatch[2];
+          if (level === 1) {
+            elements.push(
+              <h2 key={`h1-${i}`} className="content-h1">
+                {parseInlineMarkdown(text)}
+              </h2>
+            );
+          } else if (level === 2) {
+            elements.push(
+              <h3 key={`h2-${i}`} className="content-h2">
+                {parseInlineMarkdown(text)}
+              </h3>
+            );
+          } else if (level === 3) {
+            elements.push(
+              <h4 key={`h3-${i}`} className="content-h3">
+                {parseInlineMarkdown(text)}
+              </h4>
+            );
+          } else if (level === 4) {
+            elements.push(
+              <h5 key={`h4-${i}`} className="content-h4">
+                {parseInlineMarkdown(text)}
+              </h5>
+            );
+          } else {
+            elements.push(
+              <h6 key={`h5-${i}`} className="content-h5">
+                {parseInlineMarkdown(text)}
+              </h6>
+            );
+          }
+          continue;
+        }
+      }
+
+      if (/^[-*•]\s+/.test(line)) {
         // Bullet list item
         if (isNumberedList) flushList(`num-to-bullet-${i}`);
         currentListItems.push(line.replace(/^[-*•]\s+/, ''));
@@ -279,10 +306,21 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       </div>
 
       <div className="assistant-content-wrapper">
-        {/* Main lead text / structured markdown */}
-        <div className="assistant-lead-block">
-          {renderFormattedContent(message.content)}
-        </div>
+        <div className="assistant-bubble-card">
+          <div className="assistant-card-header">
+            <div className="assistant-card-identity">
+              <span className="assistant-card-name">Dabur One</span>
+              <span className="assistant-card-badge">Enterprise RAG</span>
+            </div>
+            {message.timestamp && (
+              <span className="assistant-card-time">{message.timestamp}</span>
+            )}
+          </div>
+
+          {/* Main lead text / structured markdown */}
+          <div className="assistant-lead-block">
+            {renderFormattedContent(message.content)}
+          </div>
 
         {/* Source metadata pill */}
         {message.rich_cards && message.rich_cards.length > 0 && (
@@ -417,6 +455,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

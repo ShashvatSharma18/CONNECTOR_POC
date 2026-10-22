@@ -196,12 +196,30 @@ export const App: React.FC = () => {
 
   const handleNewChat = async () => {
     try {
-      const newSession = await createSession('Chyawanprash Launch Search');
+      const newSession = await createSession('New Chat');
       setSessions((prev) => [newSession, ...prev]);
       setActiveSessionId(newSession.id);
-      await seedDaburOneDemoConversation(newSession.id);
+      setMessages([]);
     } catch (err) {
       console.error('Error creating new chat:', err);
+    }
+  };
+
+  const handleDeleteSession = async (sessionId: string) => {
+    try {
+      await deleteSession(sessionId);
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      if (activeSessionId === sessionId) {
+        const remaining = sessions.filter((s) => s.id !== sessionId);
+        if (remaining.length > 0) {
+          selectSession(remaining[0].id);
+        } else {
+          setActiveSessionId(null);
+          setMessages([]);
+        }
+      }
+    } catch (err) {
+      console.error('Error deleting session:', err);
     }
   };
 
@@ -315,6 +333,12 @@ export const App: React.FC = () => {
           onSelectTab={(tab) => setActiveNavTab(tab as any)}
           connectedCount={connectedCount}
           totalCount={totalCount}
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          onSelectSession={selectSession}
+          onNewChat={handleNewChat}
+          onDeleteSession={handleDeleteSession}
+          sources={sources}
         />
 
         {activeNavTab === 'knowledge' ? (
