@@ -1,126 +1,146 @@
 import React from 'react';
 import {
   MessageSquare,
-  Plus,
-  Settings,
-  ChevronDown,
-  ChevronUp,
   Sparkles,
-  Trash2,
-  ChevronRight,
+  Layers,
+  BookOpen,
+  Clock,
+  Settings,
+  HeartPulse,
+  Sparkle,
+  Smile,
+  Home,
+  UtensilsCrossed,
 } from 'lucide-react';
-import { ChatSession } from '../types/chat';
 
 interface SidebarProps {
-  sessions: ChatSession[];
-  activeSessionId: string | null;
-  onSelectSession: (id: string) => void;
-  onNewChat: () => void;
-  onDeleteSession: (id: string, e: React.MouseEvent) => void;
+  activeTab?: string;
+  onSelectTab?: (tab: string) => void;
+  onOpenSourcesModal?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
-  sessions,
-  activeSessionId,
-  onSelectSession,
-  onNewChat,
-  onDeleteSession,
+  activeTab = 'chat',
+  onSelectTab,
+  onOpenSourcesModal,
 }) => {
-  const [isRecentOpen, setIsRecentOpen] = React.useState(true);
+  const businessUnits = [
+    {
+      name: 'Healthcare',
+      subtitle: 'Ayurveda & Wellness',
+      icon: HeartPulse,
+    },
+    {
+      name: 'Personal Care',
+      subtitle: 'Skin & Hair Care',
+      icon: Sparkle,
+    },
+    {
+      name: 'Oral Care',
+      subtitle: 'Healthy Smiles',
+      icon: Smile,
+    },
+    {
+      name: 'Home Care',
+      subtitle: 'Clean & Safe',
+      icon: Home,
+    },
+    {
+      name: 'Foods',
+      subtitle: 'Nutrition & Taste',
+      icon: UtensilsCrossed,
+    },
+  ];
 
   return (
-    <aside className="sidebar">
-      {/* Brand Header */}
-      <div className="sidebar-header">
-        <div className="brand-logo-container">
-          <div className="brand-logo">
-            <Sparkles size={18} className="text-white" />
-          </div>
-          <div className="brand-text">
-            <h2>Source Systems Chat</h2>
-            <p>Ask • Search • Get Answers</p>
-          </div>
-        </div>
-        <button className="icon-btn-ghost" title="Collapse sidebar">
-          <ChevronRight size={16} />
-        </button>
-      </div>
-
-      {/* New Chat Button */}
-      <div className="sidebar-action">
-        <button className="new-chat-btn" onClick={onNewChat}>
-          <Plus size={18} />
-          <span>New Chat</span>
-        </button>
-      </div>
-
-      {/* Recent Chats Section */}
-      <div className="recent-chats-container">
-        <div
-          className="section-header"
-          onClick={() => setIsRecentOpen(!isRecentOpen)}
+    <aside className="dabur-sidebar">
+      {/* Top Primary Navigation */}
+      <nav className="sidebar-nav-list">
+        <button
+          className={`sidebar-nav-item ${activeTab === 'chat' ? 'active' : ''}`}
+          onClick={() => onSelectTab && onSelectTab('chat')}
         >
-          <div className="flex-center gap-8">
-            <MessageSquare size={16} className="text-muted" />
-            <span>Recent Chats</span>
-          </div>
-          {isRecentOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-        </div>
+          <MessageSquare size={17} className="nav-icon" />
+          <span>Chat</span>
+          <Sparkles size={14} className="nav-sparkle" />
+        </button>
 
-        {isRecentOpen && (
-          <div className="session-list">
-            {sessions.length === 0 ? (
-              <div className="empty-sessions">No recent chats yet</div>
-            ) : (
-              sessions.map((session) => {
-                const isActive = session.id === activeSessionId;
-                return (
-                  <div
-                    key={session.id}
-                    className={`session-item ${isActive ? 'active' : ''}`}
-                    onClick={() => onSelectSession(session.id)}
-                  >
-                    <MessageSquare size={16} className="session-icon" />
-                    <div className="session-meta">
-                      <span className="session-title" title={session.title}>
-                        {session.title}
-                      </span>
-                      <span className="session-time">
-                        {new Date(session.updated_at).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </span>
-                    </div>
-                    <button
-                      className="delete-session-btn"
-                      title="Delete chat"
-                      onClick={(e) => onDeleteSession(session.id, e)}
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        )}
-      </div>
+        <button
+          className={`sidebar-nav-item ${activeTab === 'sources' ? 'active' : ''}`}
+          onClick={() => {
+            if (onOpenSourcesModal) onOpenSourcesModal();
+            else if (onSelectTab) onSelectTab('sources');
+          }}
+        >
+          <Layers size={17} className="nav-icon" />
+          <span>Sources</span>
+        </button>
 
-      {/* Footer / User Profile */}
-      <div className="sidebar-footer">
-        <button className="footer-nav-item">
-          <Settings size={18} />
+        <button
+          className={`sidebar-nav-item ${activeTab === 'knowledge' ? 'active' : ''}`}
+          onClick={() => onSelectTab && onSelectTab('knowledge')}
+        >
+          <BookOpen size={17} className="nav-icon" />
+          <span>Knowledge Hub</span>
+        </button>
+
+        <button
+          className={`sidebar-nav-item ${activeTab === 'history' ? 'active' : ''}`}
+          onClick={() => onSelectTab && onSelectTab('history')}
+        >
+          <Clock size={17} className="nav-icon" />
+          <span>History</span>
+        </button>
+
+        <button
+          className={`sidebar-nav-item ${activeTab === 'settings' ? 'active' : ''}`}
+          onClick={() => onSelectTab && onSelectTab('settings')}
+        >
+          <Settings size={17} className="nav-icon" />
           <span>Settings</span>
         </button>
+      </nav>
 
-        <div className="user-profile-pill">
-          <div className="user-avatar-initials">SS</div>
-          <div className="user-info">
-            <span className="user-name">Shashvat Sharma</span>
-          </div>
-          <ChevronDown size={16} className="text-muted" />
-        </div>
+      {/* Our Business Section */}
+      <div className="business-units-section">
+        <span className="business-section-title">Our Business</span>
+
+        {businessUnits.map((bu, idx) => {
+          const IconComp = bu.icon;
+          return (
+            <div key={idx} className="business-unit-item">
+              <div className="bu-icon-badge">
+                <IconComp size={15} />
+              </div>
+              <div className="bu-meta">
+                <span className="bu-name">{bu.name}</span>
+                <span className="bu-subtitle">{bu.subtitle}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Botanical Footer with Dabur Motto */}
+      <div className="sidebar-botanical-footer">
+        <svg
+          className="quote-leaf-svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+          <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+        </svg>
+        <p className="botanical-quote-text">
+          Goodness<br />
+          of Nature.<br />
+          Powered by<br />
+          Technology.
+        </p>
       </div>
     </aside>
   );

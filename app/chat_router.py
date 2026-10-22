@@ -35,6 +35,8 @@ class AddMessageRequest(BaseModel):
     content: str
     rich_cards: list[dict[str, Any]] | None = None
     sources_accessed: list[dict[str, Any]] | None = None
+    summary_block: dict[str, Any] | None = None
+    suggested_followups: list[str] | None = None
 
 
 class ConfigureConnectorRequest(BaseModel):
@@ -717,6 +719,8 @@ def add_chat_message(session_id: str, payload: AddMessageRequest):
         content=payload.content,
         rich_cards=payload.rich_cards,
         sources_accessed=payload.sources_accessed,
+        summary_block=payload.summary_block,
+        suggested_followups=payload.suggested_followups,
     )
     return msg
 

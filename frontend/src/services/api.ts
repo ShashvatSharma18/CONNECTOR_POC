@@ -54,7 +54,9 @@ export async function addMessage(
   role: 'user' | 'assistant',
   content: string,
   rich_cards?: any[],
-  sources_accessed?: any[]
+  sources_accessed?: any[],
+  summary_block?: any,
+  suggested_followups?: any[]
 ): Promise<ChatMessage> {
   const res = await fetch(`${API_BASE}/chat/sessions/${sessionId}/messages`, {
     method: 'POST',
@@ -64,6 +66,8 @@ export async function addMessage(
       content,
       rich_cards,
       sources_accessed,
+      summary_block,
+      suggested_followups,
     }),
   });
   if (!res.ok) throw new Error('Failed to add message');

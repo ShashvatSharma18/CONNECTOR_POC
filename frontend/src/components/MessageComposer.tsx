@@ -1,23 +1,41 @@
 import React, { useState } from 'react';
 import {
   Paperclip,
-  ArrowUp,
-  Search,
-  Folder,
-  MessageSquare,
-  GitBranch,
+  Send,
+  Check,
+  Plus,
+  Mail,
+  HardDrive,
+  Hash,
+  Database,
+  FileText,
 } from 'lucide-react';
 
 interface MessageComposerProps {
   onSendMessage: (content: string) => void;
+  onOpenAddSources?: () => void;
   disabled?: boolean;
 }
 
 export const MessageComposer: React.FC<MessageComposerProps> = ({
   onSendMessage,
+  onOpenAddSources,
   disabled = false,
 }) => {
   const [input, setInput] = useState('');
+  const [selectedSources, setSelectedSources] = useState<string[]>([
+    'gmail',
+    'drive',
+    'slack',
+    'database',
+    'notion',
+  ]);
+
+  const toggleSource = (id: string) => {
+    setSelectedSources((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
+    );
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,27 +44,30 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     setInput('');
   };
 
-  const handleSuggestedPrompt = (prompt: string) => {
-    if (disabled) return;
-    onSendMessage(prompt);
-  };
+  const sourcesList = [
+    { id: 'gmail', label: 'Gmail', icon: Mail, color: '#EA4335' },
+    { id: 'drive', label: 'Drive', icon: HardDrive, color: '#F59E0B' },
+    { id: 'slack', label: 'Slack', icon: Hash, color: '#7E22CE' },
+    { id: 'database', label: 'Database', icon: Database, color: '#0284C7' },
+    { id: 'notion', label: 'Notion', icon: FileText, color: '#374151' },
+  ];
 
   return (
-    <div className="composer-container">
-      {/* Floating Input Pill */}
-      <form className="composer-input-pill" onSubmit={handleSubmit}>
+    <div className="composer-wrapper">
+      {/* Floating Main Input Card */}
+      <form className="composer-card" onSubmit={handleSubmit}>
         <button
           type="button"
-          className="composer-icon-btn"
+          className="composer-clip-btn"
           title="Attach file or context"
         >
-          <Paperclip size={18} />
+          <Paperclip size={19} />
         </button>
 
         <input
           type="text"
-          className="composer-text-input"
-          placeholder="Ask a question about your connected sources..."
+          className="composer-input"
+          placeholder='Ask anything... (e.g. "Find emails from marketing about Chyawanprash launch")'
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={disabled}
@@ -54,52 +75,40 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
         <button
           type="submit"
-          className={`composer-send-btn ${input.trim() ? 'active' : ''}`}
+          className="composer-send-circle"
           disabled={!input.trim() || disabled}
           title="Send message"
         >
-          <ArrowUp size={18} />
+          <Send size={15} />
         </button>
       </form>
 
-      {/* Suggested Prompts below input */}
-      <div className="suggested-prompts-row">
-        <button
-          type="button"
-          className="prompt-pill-btn"
-          onClick={() =>
-            handleSuggestedPrompt('Search across all sources for project status')
-          }
-        >
-          <Search size={14} />
-          <span>Search across all sources</span>
-        </button>
+      {/* Bottom Connected Sources Quick-Filter Pills */}
+      <div className="composer-sources-row">
+        {sourcesList.map((src) => {
+          const IconC = src.icon;
+          const isActive = selectedSources.includes(src.id);
+          return (
+            <button
+              key={src.id}
+              type="button"
+              className={`quick-source-chip ${isActive ? 'active' : ''}`}
+              onClick={() => toggleSource(src.id)}
+            >
+              <IconC size={13} color={src.color} />
+              <span>{src.label}</span>
+              {isActive && <Check size={11} className="text-green-700" />}
+            </button>
+          );
+        })}
 
         <button
           type="button"
-          className="prompt-pill-btn"
-          onClick={() => handleSuggestedPrompt('Find recent files in File Share and SharePoint')}
+          className="btn-add-sources-chip"
+          onClick={onOpenAddSources}
         >
-          <Folder size={14} />
-          <span>Find recent files</span>
-        </button>
-
-        <button
-          type="button"
-          className="prompt-pill-btn"
-          onClick={() => handleSuggestedPrompt('Check Teams messages for announcements')}
-        >
-          <MessageSquare size={14} />
-          <span>Check Teams messages</span>
-        </button>
-
-        <button
-          type="button"
-          className="prompt-pill-btn"
-          onClick={() => handleSuggestedPrompt('Show GitHub repos and latest commits')}
-        >
-          <GitBranch size={14} />
-          <span>Show GitHub repos</span>
+          <Plus size={12} style={{ display: 'inline', marginRight: '4px' }} />
+          <span>Add sources</span>
         </button>
       </div>
     </div>

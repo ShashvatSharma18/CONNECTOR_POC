@@ -13,7 +13,7 @@ export interface RichCardAttachment {
 }
 
 export interface RichCard {
-  type: 'document' | 'teams_message' | 'email' | 'repo';
+  type: 'document' | 'teams_message' | 'email' | 'repo' | 'slack' | 'database' | 'notion';
   title: string;
   metadata?: string;
   snippet?: string;
@@ -23,6 +23,11 @@ export interface RichCard {
   link?: string;
   action_label?: string;
   attachments?: RichCardAttachment[];
+  sender_initials?: string;
+  sender_name?: string;
+  department?: string;
+  date_str?: string;
+  badge_color?: string;
 }
 
 export interface SourceAccessed {
@@ -30,6 +35,12 @@ export interface SourceAccessed {
   status_text: string;
   icon: string;
   verified: boolean;
+}
+
+export interface SummaryBlock {
+  key_updates: string[];
+  pending_actions: string[];
+  source_summary?: string;
 }
 
 export interface ChatMessage {
@@ -40,6 +51,8 @@ export interface ChatMessage {
   timestamp: string;
   rich_cards?: RichCard[];
   sources_accessed?: SourceAccessed[];
+  summary_block?: SummaryBlock;
+  suggested_followups?: string[];
 }
 
 export interface ConfigField {
@@ -60,15 +73,23 @@ export interface ConnectorSource {
   status: string;
   is_connected: boolean;
   badge_color: 'green' | 'blue' | 'yellow' | 'purple' | 'gray';
-  account?: string;
+  account?: string | null;
   auth_type?: 'oauth' | 'credentials' | 'info';
   auth_url?: string;
   description?: string;
   config_fields?: ConfigField[];
+  category?: string;
 }
 
 export interface ConnectorsStatusResponse {
   connected_count: number;
   total_count: number;
   sources: ConnectorSource[];
+}
+
+export interface ActivityItem {
+  id: string;
+  text: string;
+  time_ago: string;
+  icon_type: 'gmail' | 'database' | 'notion' | 'slack' | 'drive';
 }

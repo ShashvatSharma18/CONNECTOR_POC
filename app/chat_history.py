@@ -52,6 +52,15 @@ class ChatHistoryDB:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_messages_session ON chat_messages(session_id);"
             )
+            # Add summary_block and suggested_followups columns if missing
+            try:
+                conn.execute("ALTER TABLE chat_messages ADD COLUMN summary_block TEXT;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE chat_messages ADD COLUMN suggested_followups TEXT;")
+            except Exception:
+                pass
             conn.commit()
 
     def create_session(self, title: str = "New Chat") -> dict[str, Any]:
@@ -119,6 +128,22 @@ class ChatHistoryDB:
                 else:
                     msg_dict["sources_accessed"] = []
 
+                if msg_dict.get("summary_block"):
+                    try:
+                        msg_dict["summary_block"] = json.loads(msg_dict["summary_block"])
+                    except Exception:
+                        msg_dict["summary_block"] = None
+                else:
+                    msg_dict["summary_block"] = None
+
+                if msg_dict.get("suggested_followups"):
+                    try:
+                        msg_dict["suggested_followups"] = json.loads(msg_dict["suggested_followups"])
+                    except Exception:
+                        msg_dict["suggested_followups"] = []
+                else:
+                    msg_dict["suggested_followups"] = []
+
                 parsed_messages.append(msg_dict)
 
             res = dict(session)
@@ -149,6 +174,8 @@ class ChatHistoryDB:
         rich_cards: list[dict[str, Any]] | None = None,
         sources_accessed: list[dict[str, Any]] | None = None,
         msg_id: str | None = None,
+        summary_block: dict[str, Any] | None = None,
+        suggested_followups: list[str] | None = None,
     ) -> dict[str, Any]:
         message_id = msg_id or str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
@@ -156,6 +183,8 @@ class ChatHistoryDB:
 
         cards_json = json.dumps(rich_cards) if rich_cards else None
         sources_json = json.dumps(sources_accessed) if sources_accessed else None
+        summary_json = json.dumps(summary_block) if summary_block else None
+        followups_json = json.dumps(suggested_followups) if suggested_followups else None
 
         with self._get_connection() as conn:
             # Touch session updated_at
@@ -165,10 +194,10 @@ class ChatHistoryDB:
             )
             conn.execute(
                 """
-                INSERT INTO chat_messages (id, session_id, role, content, rich_cards, sources_accessed, timestamp, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO chat_messages (id, session_id, role, content, rich_cards, sources_accessed, summary_block, suggested_followups, timestamp, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (message_id, session_id, role, content, cards_json, sources_json, time_str, now),
+                (message_id, session_id, role, content, cards_json, sources_json, summary_json, followups_json, time_str, now),
             )
             conn.commit()
 
@@ -179,6 +208,8 @@ class ChatHistoryDB:
             "content": content,
             "rich_cards": rich_cards or [],
             "sources_accessed": sources_accessed or [],
+            "summary_block": summary_block,
+            "suggested_followups": suggested_followups or [],
             "timestamp": time_str,
             "created_at": now,
         }
