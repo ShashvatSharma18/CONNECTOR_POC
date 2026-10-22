@@ -89,12 +89,13 @@ def extract_gmail_query_and_count(text: str) -> tuple[str, int, bool]:
     """
     Intelligently parses user query for Gmail:
     Returns (search_query, count, is_singular_latest).
-    - If user asks for their last/latest email (e.g. 'tell about the last mail', 'What is in my last email'),
+    - If user specifies a sender (e.g. 'latest mail of sukhpreet', 'from HR', 'sukhpreet's email'),
+      search_query is extracted so Gmail filters for that person.
+    - If user specifies a topic/subject (e.g. 'about marketing launch'), search_query is that topic.
+    - If user asks for pure latest email (e.g. 'tell about the last mail', 'What is in my last email'),
       search_query is "" so Gmail returns the true latest message chronologically.
     - If user specifies a specific date/time (e.g. 'onn date 16 oct 2:22' or 'at 2:22'),
       search_query is "" so messages can be accurately matched by timestamp in Python.
-    - If user specifies a sender (e.g. 'from HR'), search_query is 'from:HR'.
-    - If user specifies a specific topic, extracts that topic.
     """
     clean = normalize_text_for_email_search(text.strip())
 
@@ -104,7 +105,38 @@ def extract_gmail_query_and_count(text: str) -> tuple[str, int, bool]:
         # Return empty query to fetch recent batch and filter in Python
         return "", 20, bool(target_h is not None)
 
-    # 1. Check if asking for a singular latest email
+    # 1. Check sender
+    sender = None
+    poss_match = re.search(r"\b([A-Za-z0-9_.@-]+(?:\s+[A-Za-z0-9_.@-]+)*)'s\s+(?:last\s+|latest\s+|recent\s+)?(?:email|mail)\b", clean, re.I)
+    if poss_match:
+        cand = poss_match.group(1).strip()
+        if cand.lower() not in ["me", "my", "mine", "us", "the"]:
+            sender = cand
+    else:
+        of_match = re.search(
+            r"\b(?:from:?|by|sent by|of)\s+([A-Za-z0-9_.@-]+(?:\s+[A-Za-z0-9_.@-]+)*?)(?=\s+\b(and|what|whats|what's|with|which|about|regarding|titled|subject|is|in|for|to|\?|!|\.)\b|$)",
+            clean,
+            re.I,
+        )
+        if of_match:
+            cand = of_match.group(1).strip()
+            if cand.lower() not in ["me", "my", "mine", "us", "him", "her", "them", "the", "an", "a", "our", "all"]:
+                sender = cand
+        else:
+            send_match = re.search(r"\bwhat did\s+([A-Za-z0-9_.@-]+(?:\s+[A-Za-z0-9_.@-]+)*?)\s+send\b", clean, re.I)
+            if send_match:
+                cand = send_match.group(1).strip()
+                if cand.lower() not in ["you", "i", "we", "they"]:
+                    sender = cand
+
+    # 2. Check topic
+    topic = None
+    about_match = re.search(r"\b(?:about|regarding|titled|subject)\s+([^?.!]+)", clean, re.I)
+    if about_match:
+        raw_topic = re.sub(r"\b(my|the|an?|emails?|please|find|show|tell|me|and|what|is|in|that)\b", "", about_match.group(1).strip(), flags=re.I).strip()
+        if raw_topic and raw_topic.lower() not in ["last", "latest", "recent"]:
+            topic = raw_topic
+
     is_singular_latest = bool(
         re.search(
             r"\b(last\s+email|latest\s+email|most\s+recent\s+email|previous\s+email|last\s+one|latest\s+one)\b",
@@ -118,31 +150,32 @@ def extract_gmail_query_and_count(text: str) -> tuple[str, int, bool]:
         )
     )
 
-    # Check for general latest queries
+    # 3. If sender or topic is explicitly specified, search by them
+    if sender or topic:
+        query_parts = []
+        if sender:
+            if "@" in sender or (len(sender.split()) == 1 and not topic):
+                query_parts.append(f"from:{sender}")
+            else:
+                query_parts.append(sender)
+        if topic:
+            query_parts.append(topic)
+        query = " ".join(query_parts)
+        return query, 3, is_singular_latest
+
+    # 4. Pure latest / general latest queries (no sender, no topic filter)
     is_general_latest = bool(re.search(
         r"^(what(\x27s|\s+is)?\s+(in\s+)?(my\s+)?(last|latest|recent|new)(\s+email)?|tell(\s+me)?\s+about\s+(the\s+|my\s+)?(last|latest|recent)\s+email|find\s+(my\s+)?(last|latest|recent)\s+email|show\s+(my\s+)?(last|latest|recent)\s+email|check\s+(my\s+)?(last|latest|recent|inbox|email)|(any\s+)?new\s+email|my\s+(last|latest|recent)\s+email|get\s+(my\s+)?(last|latest|recent)\s+email)[!.,?\s]*$",
         clean,
         re.I,
     ))
 
-    # If it is a latest/last query, ALWAYS return empty query for true chronological inbox order!
+    # If it is a pure inbox-wide latest/last query, return empty query for true chronological inbox order
     if is_singular_latest or is_general_latest:
         count = 1 if is_singular_latest else 3
         return "", count, is_singular_latest
 
-    # 2. Check for "from: <sender>"
-    from_match = re.search(r"\bfrom:?\s+([A-Za-z0-9_.@-]+)", clean, re.I)
-    if from_match:
-        return f"from:{from_match.group(1).strip()}", 3, False
-
-    # 3. Check for "about: <topic>"
-    about_match = re.search(r"\b(about|regarding|subject|titled)\s+([^?.!]+)", clean, re.I)
-    if about_match:
-        topic = re.sub(r"\b(my|the|an?|emails?|please|find|show|tell|me)\b", "", about_match.group(2).strip(), flags=re.I).strip()
-        if topic and topic.lower() not in ["last", "latest", "recent"]:
-            return topic, 3, False
-
-    # 4. Strip filler/conversational words
+    # 5. Fallback: Strip filler/conversational words
     stopwords = r"\b(hi+|hello+|hey+|what(\x27s|\s+is)?|in|my|the|find|search|get|show|check|tell|me|about|latest|recent|last|new|emails?|gmail|inbox|please|can|you|whats|onn?|date|at|this|is)\b"
     extracted = re.sub(stopwords, "", clean, flags=re.I)
     extracted = re.sub(r"[^a-zA-Z0-9\s]", " ", extracted).strip()
@@ -360,7 +393,7 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                             date = raw_date
                         raw_snippet = full_msg.get("snippet", "")
                         clean_snippet = html.unescape(re.sub(r"^-+\s*Forwarded message\s*-+\s*", "", raw_snippet, flags=re.I)).strip()
-                        body = full_msg.get("body_text", clean_snippet)[:1500]
+                        body = full_msg.get("body_text", clean_snippet)[:3500]
                         attachments = full_msg.get("attachments", [])
 
                         evidence_text = (
