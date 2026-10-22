@@ -192,13 +192,21 @@ class GoogleChatConnector:
             with urllib.request.urlopen(req, timeout=20) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
+            err_body = exc.read().decode("utf-8", errors="replace")
+            logger.error(f"Google Chat API error HTTP {exc.code}: {err_body}")
+            try:
+                err_json = json.loads(err_body)
+                err_msg = err_json.get("error", {}).get("message", err_body)
+            except Exception:
+                err_msg = err_body
+
             if exc.code == 401:
-                raise HTTPException(401, "Google Chat access token is invalid or expired. Visit /google-chat/auth/login")
+                raise HTTPException(401, f"Google Chat access token is invalid or expired: {err_msg}")
             if exc.code == 403:
-                raise HTTPException(403, "Google Chat API access denied or insufficient permissions")
+                raise HTTPException(403, f"Google Chat API access denied: {err_msg}")
             if exc.code == 404:
-                raise HTTPException(404, "Google Chat resource not found")
-            raise HTTPException(502, f"Google Chat API error: HTTP {exc.code}")
+                raise HTTPException(404, f"Google Chat resource not found: {err_msg}")
+            raise HTTPException(502, f"Google Chat API error HTTP {exc.code}: {err_msg}")
         except Exception as exc:
             raise HTTPException(502, f"Unable to reach Google Chat API: {str(exc)}")
 
@@ -305,10 +313,12 @@ class GoogleChatConnector:
             except Exception as e:
                 logger.debug("Could not read messages from space %s: %s", sp_name, str(e))
 
-            if len(matched) >= max_results:
+            if len(matched) >= max_results * 2:
                 break
 
-        return {"messages": matched, "total": len(matched)}
+        matched.sort(key=lambda x: x.get("createTime") or "", reverse=True)
+        result = matched[:max_results]
+        return {"messages": result, "total": len(result)}
 
 
 def get_google_chat_connector() -> GoogleChatConnector:
