@@ -260,19 +260,62 @@ body {
   z-index: 10;
 }
 
+/* Top Header Brand Group */
+.navbar-brand-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.navbar-sidebar-toggle-btn {
+  background: #F8FAF8;
+  border: 1px solid var(--border-card);
+  color: var(--text-body);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.navbar-sidebar-toggle-btn:hover {
+  background: var(--dabur-green-soft);
+  color: var(--dabur-green-primary);
+  border-color: var(--dabur-green-border);
+}
+
 /* ===================================================
    2. LEFT SIDEBAR (DABUR ONE NAVIGATION & BUSINESS UNITS)
    =================================================== */
 .dabur-sidebar {
-  width: 230px;
+  width: 275px;
   background: #FFFFFF;
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  padding: 16px 14px;
+  padding: 16px 16px;
   overflow-y: auto;
+  overflow-x: hidden;
   gap: 20px;
+  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+              padding 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.2s ease,
+              border-color 0.2s ease;
+  white-space: nowrap;
+}
+
+.dabur-sidebar.collapsed {
+  width: 0 !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  border-right: 1px solid transparent !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 .sidebar-nav-list {
@@ -322,11 +365,34 @@ body {
 
 /* Sidebar Action Header */
 .sidebar-action-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding-bottom: 6px;
 }
 
+.btn-sidebar-collapse {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.btn-sidebar-collapse:hover {
+  background: #F1F5F2;
+  color: var(--dabur-green-primary);
+  border-color: var(--dabur-green-border);
+}
+
 .btn-new-chat-primary {
-  width: 100%;
+  flex: 1;
   background: var(--dabur-green-primary);
   color: #FFFFFF;
   border: none;
@@ -619,7 +685,7 @@ body {
 }
 
 .chat-content-container {
-  max-width: 900px;
+  max-width: 1200px;
   width: 100%;
   margin: 0 auto;
   display: flex;
@@ -682,9 +748,9 @@ body {
 .quick-prompts-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
+  gap: 14px;
   width: 100%;
-  max-width: 760px;
+  max-width: 960px;
 }
 
 .quick-prompt-card {
@@ -1362,11 +1428,18 @@ body {
 .composer-wrapper {
   background: #FFFFFF;
   border-top: 1px solid var(--border-subtle);
-  padding: 16px 28px 20px;
+  padding: 14px 28px 18px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   flex-shrink: 0;
+}
+
+.composer-card,
+.composer-sources-bar {
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
 }
 
 .composer-card {

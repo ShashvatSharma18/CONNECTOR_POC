@@ -17,6 +17,7 @@ import {
   Box,
   Folder,
   GraduationCap,
+  PanelLeftClose,
 } from 'lucide-react';
 import { ChatSession, ConnectorSource } from '../types/chat';
 
@@ -31,6 +32,8 @@ interface SidebarProps {
   onNewChat?: () => void;
   onDeleteSession?: (id: string) => void;
   sources?: ConnectorSource[];
+  isOpen?: boolean;
+  onToggle?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -44,6 +47,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onNewChat,
   onDeleteSession,
   sources = [],
+  isOpen = true,
+  onToggle,
 }) => {
   const connectedSources = sources.filter(
     (s) => s.is_connected && !['servicenow', 'salesforce', 'jira'].includes(s.id.toLowerCase())
@@ -80,8 +85,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <aside className="dabur-sidebar">
-      {/* 1. New Chat Action Button */}
+    <aside className={`dabur-sidebar ${isOpen ? 'expanded' : 'collapsed'}`}>
+      {/* 1. New Chat Action Button & Collapse Button */}
       <div className="sidebar-action-header">
         <button
           type="button"
@@ -95,6 +100,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <Plus size={16} />
           <span>New Chat</span>
         </button>
+        {onToggle && (
+          <button
+            type="button"
+            className="btn-sidebar-collapse"
+            onClick={onToggle}
+            title="Collapse sidebar"
+          >
+            <PanelLeftClose size={17} />
+          </button>
+        )}
       </div>
 
       {/* 2. Primary Navigation */}

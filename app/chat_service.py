@@ -216,12 +216,143 @@ def call_groq_llm(messages: list[dict[str, str]]) -> str:
     return "I'm having trouble connecting to the AI language model at the moment. Please try again shortly."
 
 
+def plan_retrieval_strategy(user_text: str, prior_messages: list[dict[str, Any]]) -> dict[str, Any]:
+    """
+    Intelligent LLM-powered Query Intent & Retrieval Planner for Dabur One Enterprise AI.
+    Understands questions in English, Hindi, Hinglish, informal, shorthand, or complex phrases
+    WITHOUT requiring any hardcoded keywords.
+    Dynamically identifies which connected enterprise source(s) to query and generates optimal search parameters.
+    """
+    clean = user_text.strip()
+    if GREETING_REGEX.match(clean) and len(clean.split()) <= 3:
+        return {
+            "is_pure_greeting": True,
+            "sources": [],
+            "gmail_query": "",
+            "gmail_count": 0,
+            "drive_query": "",
+            "github_query": "",
+            "slack_query": "",
+            "database_query": "",
+            "notion_query": "",
+            "user_intent_summary": "Greeting",
+        }
+
+    history_snippets = []
+    for m in prior_messages[-3:]:
+        role = m.get("role", "user")
+        cnt = m.get("content", "")[:200]
+        history_snippets.append(f"{role.capitalize()}: {cnt}")
+    context_str = "\n".join(history_snippets)
+
+    system_prompt = (
+        "You are the intelligent Retrieval & Intent Planner for Dabur One Enterprise AI.\n"
+        "Your job is to understand any question from an employee (in English, Hindi, or Hinglish) "
+        "WITHOUT requiring any hardcoded keywords or exact commands.\n\n"
+        "Available Connected Enterprise Systems:\n"
+        "- 'gmail': emails, email threads, forwarded messages, sender communications, meeting invites, Minutes of Meeting (MoM), agendas, approvals, deliverables, leaves, and daily updates.\n"
+        "- 'google_drive': presentations, slides, decks, docs, spreadsheets, PDFs, files on Drive.\n"
+        "- 'github': code repositories, branches, commits, pull requests, technical codebases.\n"
+        "- 'slack': team chat channels, direct messages, daily standups.\n"
+        "- 'database': PostgreSQL database, tables, schema, customer data, SQL queries.\n"
+        "- 'notion': internal wiki pages, handbook, policies, company notes.\n"
+        "- 'sharepoint': corporate policies, department intranets, guidelines.\n"
+        "- 'lms': employee training courses, LMS certifications, learning modules.\n"
+        "- 'file_share': network shared folders and server files.\n\n"
+        "Rules:\n"
+        "1. If user is greeting ('hi', 'hello', 'good morning', 'namaste', 'thanks', 'bye') without asking for information, set 'is_pure_greeting': true and 'sources': [].\n"
+        "2. If the user asks about people, what someone sent, latest emails, meeting discussions, agendas, or approvals, include 'gmail' in 'sources'. If documents or decks are mentioned, also include 'google_drive'.\n"
+        "3. For 'gmail_query':\n"
+        "   - Search for the PERSON or SENDER name (e.g. 'sukhpreet singh kalra') or the core topic/product name (e.g. 'Dabur India', 'Chyawanprash').\n"
+        "   - IMPORTANT: DO NOT include user question/instruction words like 'agenda', 'what is in', 'details', 'summary', 'latest', 'mail', 'updates' inside 'gmail_query' itself, because those are questions for the LLM to analyze and answer from the retrieved message content.\n"
+        "   - If asking generally for the latest email with no person or topic, leave 'gmail_query': '' and set 'gmail_count': 1.\n"
+        "   - If a person or topic is mentioned, set 'gmail_count': 3.\n"
+        "4. Return ONLY a valid JSON object matching this schema:\n"
+        "{\n"
+        "  \"is_pure_greeting\": false,\n"
+        "  \"sources\": [\"gmail\"],\n"
+        "  \"gmail_query\": \"sukhpreet singh kalra\",\n"
+        "  \"gmail_count\": 3,\n"
+        "  \"drive_query\": \"\",\n"
+        "  \"github_query\": \"\",\n"
+        "  \"slack_query\": \"\",\n"
+        "  \"database_query\": \"\",\n"
+        "  \"notion_query\": \"\",\n"
+        "  \"user_intent_summary\": \"Looking for latest email from Sukhpreet Singh Kalra and agenda details\"\n"
+        "}"
+    )
+
+    if GROQ_API_KEY:
+        try:
+            resp = requests.post(
+                GROQ_API_URL,
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model": "openai/gpt-oss-20b",
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": f"Recent Conversation Context:\n{context_str}\n\nUser Question: {clean}"}
+                    ],
+                    "temperature": 0.0,
+                    "response_format": {"type": "json_object"}
+                },
+                timeout=8
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_json = data["choices"][0]["message"]["content"].strip()
+                parsed = json.loads(raw_json)
+                if isinstance(parsed, dict) and "sources" in parsed:
+                    return parsed
+        except Exception as e:
+            logger.warning("LLM retrieval planner fallback due to error: %s", str(e))
+
+    # Fast heuristic fallback if LLM planner times out or is offline
+    fallback_sources = []
+    clean_norm = normalize_text_for_email_search(clean)
+    target_h, target_m, target_day, target_month = extract_gmail_date_time_target(clean_norm)
+    has_email = bool(
+        re.search(r"\b(email|emails|mail|mails|gmail|inbox|sent|message|messages)\b", clean_norm, re.I)
+        or (target_h is not None or target_day is not None)
+    )
+    if has_email:
+        fallback_sources.append("gmail")
+    if re.search(r"\b(github|repo|code|commit|branch|pr)\b", clean, re.I):
+        fallback_sources.append("github")
+    if re.search(r"\b(drive|google\s*doc|doc|deck|presentation|sheet)\b", clean, re.I):
+        fallback_sources.append("google_drive")
+    if re.search(r"\b(postgres|sql|database|table|query)\b", clean, re.I):
+        fallback_sources.append("database")
+    if re.search(r"\b(slack|channel|dm)\b", clean, re.I):
+        fallback_sources.append("slack")
+    if re.search(r"\b(notion|wiki|page)\b", clean, re.I):
+        fallback_sources.append("notion")
+
+    # If no source was detected, default to searching Gmail so broad questions still check communications
+    if not fallback_sources and not GREETING_REGEX.match(clean):
+        fallback_sources.append("gmail")
+
+    g_q, g_cnt, _ = extract_gmail_query_and_count(clean)
+    return {
+        "is_pure_greeting": bool(GREETING_REGEX.match(clean) and len(clean.split()) <= 3),
+        "sources": fallback_sources,
+        "gmail_query": g_q,
+        "gmail_count": g_cnt,
+        "drive_query": clean,
+        "github_query": clean,
+        "slack_query": clean,
+        "database_query": clean,
+        "notion_query": clean,
+        "user_intent_summary": clean,
+    }
+
+
 def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
     """
     Process a chat turn:
     1. Save user message.
     2. Retrieve conversation history.
-    3. Detect intent (Greeting, Gmail, GitHub, Follow-up, etc.).
+    3. Intelligent Intent & Source Retrieval Planning (Zero-hardcoding).
     4. Fetch real source evidence if applicable.
     5. Invoke Groq AI with multi-turn context and evidence.
     6. Construct rich_cards and sources_accessed.
@@ -239,31 +370,24 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
     # Take prior messages (excluding the message just inserted)
     prior_messages = [m for m in history_messages if m["id"] != user_msg["id"]][-6:]
 
-    # 3. Detect Intent
-    is_pure_greeting = bool(GREETING_REGEX.match(clean_text))
-    has_github_intent = bool(re.search(r"\b(github|repo|repos|repository|repositories|commit|code|branch|pr)\b", clean_text, re.I))
-    has_sharepoint_intent = bool(re.search(r"\b(sharepoint|teams|microsoft)\b", clean_text, re.I))
-    has_fileshare_intent = bool(re.search(r"\b(file\s*share|shared\s*folder|test-share)\b", clean_text, re.I))
-    has_lms_intent = bool(re.search(r"\b(lms|course|courses|learning)\b", clean_text, re.I))
-    has_slack_intent = bool(re.search(r"\b(slack|channel|channels|dm|direct\s*message|workspace\s*chat)\b", clean_text, re.I))
-    has_database_intent = bool(re.search(r"\b(postgres|postgresql|database|sql|tables?|schema|query|sqlite)\b", clean_text, re.I))
-    has_notion_intent = bool(re.search(r"\b(notion|wiki|workspace\s*page|notion\s*page|notion\s*doc)\b", clean_text, re.I))
-    has_servicenow_intent = bool(re.search(r"\b(servicenow|incident|incidents|ticket|tickets|service\s*request|service\s*requests|sc_request|knowledge\s*base)\b", clean_text, re.I))
-    has_salesforce_intent = bool(re.search(r"\b(salesforce|crm|lead|leads|opportunity|opportunities|deal|deals|account|accounts)\b", clean_text, re.I))
-    has_drive_intent = bool(re.search(r"\b(google\s*drive|gdrive|drive\s*file|drive\s*files|google\s*doc|google\s*docs|google\s*sheet|google\s*sheets|drive)\b", clean_text, re.I))
-    has_jira_intent = bool(re.search(r"\b(jira|issue|issues|sprint|backlog|epic|story|bug|bugs|kanban|board|atlassian)\b", clean_text, re.I))
-    is_followup = bool(FOLLOWUP_REGEX.search(clean_text))
+    # 3. Intelligent Intent & Source Retrieval Planning (Zero-hardcoding)
+    plan = plan_retrieval_strategy(clean_text, prior_messages)
+    is_pure_greeting = plan.get("is_pure_greeting", False)
+    planned_sources = plan.get("sources", [])
 
-    target_h, target_m, target_day, target_month = extract_gmail_date_time_target(clean_normalized)
-    has_email_intent = bool(
-        re.search(r"\b(email|emails|mail|mails|gmail|inbox|sent|message|messages)\b", clean_normalized, re.I)
-        or re.search(
-            r"^(what(\x27s|\s+is)?\s+(in\s+)?(my\s+)?(last|latest|recent)|whats\s+(in\s+)?(my\s+)?(last|latest|recent))[!.,?\s]*$",
-            clean_normalized,
-            re.I,
-        )
-        or ((target_h is not None or target_day is not None) and not (has_github_intent or has_jira_intent or has_drive_intent or has_servicenow_intent or has_salesforce_intent or has_slack_intent or has_database_intent or has_notion_intent))
-    )
+    has_email_intent = "gmail" in planned_sources or bool(plan.get("gmail_query"))
+    has_drive_intent = "google_drive" in planned_sources or bool(plan.get("drive_query"))
+    has_github_intent = "github" in planned_sources or bool(plan.get("github_query"))
+    has_slack_intent = "slack" in planned_sources or bool(plan.get("slack_query"))
+    has_database_intent = "database" in planned_sources or bool(plan.get("database_query"))
+    has_notion_intent = "notion" in planned_sources or bool(plan.get("notion_query"))
+    has_sharepoint_intent = "sharepoint" in planned_sources or bool(re.search(r"\b(sharepoint|teams|microsoft)\b", clean_text, re.I))
+    has_fileshare_intent = "file_share" in planned_sources or bool(re.search(r"\b(file\s*share|shared\s*folder|test-share)\b", clean_text, re.I))
+    has_lms_intent = "lms" in planned_sources or bool(re.search(r"\b(lms|course|courses|learning)\b", clean_text, re.I))
+    has_servicenow_intent = "servicenow" in planned_sources
+    has_salesforce_intent = "salesforce" in planned_sources
+    has_jira_intent = "jira" in planned_sources
+    is_followup = bool(FOLLOWUP_REGEX.search(clean_text))
 
     rich_cards: list[dict[str, Any]] = []
     sources_accessed: list[dict[str, Any]] = []
@@ -281,7 +405,6 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
             break
 
     if is_followup and not (has_email_intent or has_github_intent or has_sharepoint_intent or has_drive_intent or has_jira_intent or has_servicenow_intent or has_salesforce_intent or has_slack_intent or has_database_intent or has_notion_intent):
-        # Determine if previous context was email, github, slack, database, or notion
         if any(c.get("type") == "email" for c in prev_cards):
             has_email_intent = True
         elif any(c.get("type") == "repo" for c in prev_cards):
@@ -319,7 +442,14 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
         if has_email_intent:
             try:
                 gmail = get_gmail_connector()
-                search_q, fetch_count, is_singular_latest = extract_gmail_query_and_count(clean_text)
+                planned_g_q = plan.get("gmail_query")
+                if planned_g_q is not None:
+                    search_q = planned_g_q
+                    fetch_count = plan.get("gmail_count", 3)
+                    is_singular_latest = (fetch_count == 1 and not search_q)
+                else:
+                    search_q, fetch_count, is_singular_latest = extract_gmail_query_and_count(clean_text)
+
                 target_h, target_m, target_day, target_month = extract_gmail_date_time_target(clean_normalized)
                 if is_followup:
                     search_q = ""

@@ -22,10 +22,11 @@ import {
   configureConnector,
   disconnectConnector,
 } from './services/api';
-import { Search, Bell, ChevronDown } from 'lucide-react';
+import { Search, Bell, ChevronDown, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [activeNavTab, setActiveNavTab] = useState<'chat' | 'knowledge' | 'history' | 'settings'>('chat');
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -281,17 +282,27 @@ export const App: React.FC = () => {
 
       {/* Top Header Navigation Bar */}
       <header className="top-navbar">
-        {/* Brand Logo & Subtitle */}
-        <div className="navbar-brand" onClick={() => handleNewChat()}>
-          <div className="dabur-logo-icon">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
-              <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
-            </svg>
-          </div>
-          <div className="dabur-brand-text">
-            <h1>Dabur One</h1>
-            <p>Smarter Search. Better Decisions.</p>
+        {/* Brand Logo & Subtitle with Sidebar Toggle */}
+        <div className="navbar-brand-group">
+          <button
+            type="button"
+            className="navbar-sidebar-toggle-btn"
+            onClick={() => setIsSidebarOpen((prev) => !prev)}
+            title={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+          >
+            {isSidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+          </button>
+          <div className="navbar-brand" onClick={() => handleNewChat()}>
+            <div className="dabur-logo-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+                <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+              </svg>
+            </div>
+            <div className="dabur-brand-text">
+              <h1>Dabur One</h1>
+              <p>Smarter Search. Better Decisions.</p>
+            </div>
           </div>
         </div>
 
@@ -326,7 +337,7 @@ export const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Body: Left Sidebar + Center Workspace (Chat or KnowledgeHub) + Right Source Panel */}
+      {/* Main Body: Left Sidebar + Center Workspace (Chat or KnowledgeHub) */}
       <div className="main-body-content">
         <Sidebar
           activeTab={activeNavTab}
@@ -339,6 +350,8 @@ export const App: React.FC = () => {
           onNewChat={handleNewChat}
           onDeleteSession={handleDeleteSession}
           sources={sources}
+          isOpen={isSidebarOpen}
+          onToggle={() => setIsSidebarOpen((prev) => !prev)}
         />
 
         {activeNavTab === 'knowledge' ? (
