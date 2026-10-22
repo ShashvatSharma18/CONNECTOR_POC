@@ -1318,8 +1318,9 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                 try:
                     gchat = get_google_chat_connector()
                     chat_q = plan.get("chat_query") or clean_text
-                    stopwords = r"\b(google\s*chat|gchat|chat|space|spaces|messages?|show|list|get|find|search|about|what|is|in|my)\b"
+                    stopwords = r"\b(google\s*chat|gchat|chat|space|spaces|messages?|show|list|get|find|search|about|what|is|in|my|last|latest|recent|newest|all)\b"
                     clean_chat_q = re.sub(stopwords, " ", chat_q, flags=re.I).strip()
+                    clean_chat_q = re.sub(r"[?!.,'\"]+", "", clean_chat_q).strip()
                     search_res = gchat.search_messages(clean_chat_q, max_results=6)
                     msgs = search_res.get("messages", [])
                     if msgs:
