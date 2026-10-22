@@ -655,9 +655,9 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                                 "download_url": att_url,
                             })
 
-                        # Deep link directly to email in Gmail web
+                        # Deep link directly to email in Gmail web using valid authuser param
                         gmail_web_link = (
-                            f"https://mail.google.com/mail/u/{user_email}/#all/{thread_id}"
+                            f"https://mail.google.com/mail/?authuser={user_email}#all/{thread_id}"
                             if user_email
                             else f"https://mail.google.com/mail/#all/{thread_id}"
                         )

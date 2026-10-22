@@ -209,7 +209,7 @@ def gmail_open_in_web(message_id: str):
     status = connector.get_status()
     user_email = status.get("email_address", "")
     target_url = (
-        f"https://mail.google.com/mail/u/{user_email}/#all/{thread_id}"
+        f"https://mail.google.com/mail/?authuser={user_email}#all/{thread_id}"
         if user_email
         else f"https://mail.google.com/mail/#all/{thread_id}"
     )

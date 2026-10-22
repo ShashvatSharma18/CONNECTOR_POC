@@ -245,7 +245,7 @@ class GoogleChatConnector:
                 "displayName": display_name,
                 "type": s.get("spaceType", s.get("type", "SPACE")),
                 "threadingState": s.get("spaceThreadingState"),
-                "webLink": f"https://mail.google.com/chat/u/0/#chat/space/{space_id}",
+                "webLink": s.get("spaceUri") or f"https://mail.google.com/chat/u/0/#chat/space/{space_id}",
             })
         return {
             "spaces": cleaned_spaces,

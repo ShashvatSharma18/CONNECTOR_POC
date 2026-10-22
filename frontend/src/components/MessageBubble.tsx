@@ -389,13 +389,23 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               };
 
               const handleActionClick = () => {
-                const rawLink = card.link || '';
+                let rawLink = card.link || '';
                 if (card.type === 'email' || rawLink.includes('mail.google.com') || rawLink.includes('/gmail/messages/')) {
-                  const target = rawLink.includes('mail.google.com')
-                    ? rawLink
-                    : (rawLink.match(/\/gmail\/messages\/([a-zA-Z0-9]+)/)
-                        ? `https://mail.google.com/mail/#all/${rawLink.match(/\/gmail\/messages\/([a-zA-Z0-9]+)/)![1]}`
-                        : rawLink || 'https://mail.google.com');
+                  // If rawLink mistakenly contains /mail/u/some.email@domain.com/
+                  if (rawLink.includes('/mail/u/') && !rawLink.match(/\/mail\/u\/\d+\//)) {
+                    rawLink = rawLink.replace(/\/mail\/u\/([^/#?]+)\//, (_m, email) => {
+                      return `/mail/?authuser=${encodeURIComponent(email)}`;
+                    });
+                  }
+
+                  let target = rawLink;
+                  if (!target.includes('mail.google.com') && target.match(/\/gmail\/messages\/([a-zA-Z0-9]+)/)) {
+                    const threadMatch = target.match(/\/gmail\/messages\/([a-zA-Z0-9]+)/);
+                    target = `https://mail.google.com/mail/#all/${threadMatch![1]}`;
+                  }
+                  if (!target) {
+                    target = 'https://mail.google.com';
+                  }
                   window.open(target, '_blank', 'noopener,noreferrer');
                 } else if (rawLink) {
                   window.open(rawLink, '_blank', 'noopener,noreferrer');
