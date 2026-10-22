@@ -254,12 +254,15 @@ class GoogleChatConnector:
         }
 
     def list_messages(self, space_name: str, page_size: int = 20) -> dict:
-        """List messages inside a specific space or room."""
+        """List messages inside a specific space or room (newest first)."""
         # space_name can be 'spaces/AAAA...' or just 'AAAA...'
         if not space_name.startswith("spaces/"):
             space_name = f"spaces/{space_name}"
 
-        res = self._api_request(f"/{space_name}/messages", {"pageSize": min(max(page_size, 1), 50)})
+        res = self._api_request(
+            f"/{space_name}/messages",
+            {"pageSize": min(max(page_size, 1), 50), "orderBy": "createTime desc"},
+        )
         raw_msgs = res.get("messages", [])
         cleaned_msgs = []
         for m in raw_msgs:
@@ -284,7 +287,7 @@ class GoogleChatConnector:
         Searches recent messages across accessible spaces for query terms or sender.
         Uses parallel worker execution to scan spaces rapidly.
         """
-        spaces_res = self.list_spaces(page_size=30)
+        spaces_res = self.list_spaces(page_size=40)
         spaces = spaces_res.get("spaces", [])
         matched = []
 
@@ -293,22 +296,47 @@ class GoogleChatConnector:
 
         def _fetch_space_msgs(sp):
             sp_name = sp["name"]
-            sp_display = sp["displayName"]
+            sp_display = sp.get("displayName") or "Direct Message"
             sp_type = sp.get("type", "SPACE")
             results = []
             try:
-                msg_res = self.list_messages(sp_name, page_size=20)
+                # Fetches newest messages first (orderBy=createTime desc)
+                msg_res = self.list_messages(sp_name, page_size=25)
                 msgs = msg_res.get("messages", [])
+                if not msgs:
+                    return results
+
+                # Detect if this space is a 1-on-1 DM with the target person
+                is_dm_with_target = False
+                dm_other_person = None
+
+                if sp_type == "DIRECT_MESSAGE":
+                    for m in msgs:
+                        s_name = m.get("sender", "")
+                        if s_name and s_name.lower() not in ["shashvat sharma", "user", "me"]:
+                            dm_other_person = s_name
+                            break
+                    if dm_other_person and q_terms:
+                        dm_lower = dm_other_person.lower()
+                        if all(term in dm_lower for term in q_terms):
+                            is_dm_with_target = True
+
                 for m in msgs:
                     text = m.get("text", "") or ""
                     sender = m.get("sender", "") or ""
                     content_lower = f"{sender} {text}".lower()
 
-                    # When q_terms exist, require all terms to match (e.g. 'sagar' AND 'kumar')
-                    if not q_terms or all(term in content_lower for term in q_terms):
+                    matches = (
+                        not q_terms
+                        or is_dm_with_target
+                        or all(term in content_lower for term in q_terms)
+                    )
+
+                    if matches:
                         display_title = sp_display
-                        if sp_type == "DIRECT_MESSAGE" and sp_display in ["Direct Message", "DM"]:
-                            display_title = f"DM with {sender}" if sender and sender != "User" else "Direct Message"
+                        if sp_type == "DIRECT_MESSAGE":
+                            display_title = f"DM with {dm_other_person or sender}"
+
                         results.append({
                             "space_id": sp["id"],
                             "space_name": display_title,
@@ -321,8 +349,8 @@ class GoogleChatConnector:
                 logger.debug("Could not read messages from space %s: %s", sp_name, str(e))
             return results
 
-        with ThreadPoolExecutor(max_workers=6) as executor:
-            futures = [executor.submit(_fetch_space_msgs, sp) for sp in spaces[:25]]
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [executor.submit(_fetch_space_msgs, sp) for sp in spaces[:35]]
             for future in as_completed(futures):
                 try:
                     res_list = future.result()

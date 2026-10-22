@@ -324,16 +324,22 @@ def plan_retrieval_strategy(user_text: str, prior_messages: list[dict[str, Any]]
         "   - Set 'sources': ['gmail', 'google_drive', 'google_chat'].\n"
         "   - Set 'gmail_query': '' and set 'gmail_count': 15 to retrieve the batch of all recent messages across the absence window.\n"
         "   - Set 'drive_query': '' and 'chat_query': ''.\n"
-        "3. If user asks about conversations with a person (e.g. 'Priya ke sath kya baat hui', 'what did Rahul say'):\n"
-        "   - Set 'sources': ['gmail', 'google_chat'].\n"
+        "3. If user asks about chat, messages, or Google Chat with a person (e.g. 'chat with Sagar', 'message with Anish', 'what is the last message with Anish'):\n"
+        "   - Set 'sources': ['google_chat']. (DO NOT include 'gmail' unless user explicitly asks for email!)\n"
+        "   - Set 'chat_query': person's name.\n"
+        "4. If user asks about emails from or with a person (e.g. 'email from Sagar', 'mail from Rahul'):\n"
+        "   - Set 'sources': ['gmail']. (DO NOT include 'google_chat' unless user asks for chat!)\n"
+        "   - Set 'gmail_query': person's name, 'gmail_count': 5.\n"
+        "5. If user asks generally about communications or updates with a person without specifying chat or email (e.g. 'Priya ke sath kya baat hui', 'updates from Rahul'):\n"
+        "   - Set 'sources': ['google_chat', 'gmail'].\n"
         "   - Set 'gmail_query': person's name, 'chat_query': person's name, 'gmail_count': 5.\n"
-        "4. For general single latest email queries ('what is in my last email', 'tell me about latest email'):\n"
+        "6. For general single latest email queries ('what is in my last email', 'tell me about latest email'):\n"
         "   - Set 'sources': ['gmail'], 'gmail_query': '', 'gmail_count': 1.\n"
-        "5. For specific topics, products, or campaigns (e.g. 'Chyawanprash launch', 'marketing updates', 'vendor contract'):\n"
+        "7. For specific topics, products, or campaigns (e.g. 'Chyawanprash launch', 'marketing updates', 'vendor contract'):\n"
         "   - Search for the core topic keyword (e.g. 'Chyawanprash').\n"
         "   - Set 'sources': ['gmail', 'google_drive'], 'gmail_count': 5.\n"
         "   - IMPORTANT: DO NOT include user question/instruction words like 'agenda', 'what is in', 'details', 'summary', 'latest', 'mail', 'updates' inside 'gmail_query' itself.\n"
-        "6. Return ONLY a valid JSON object matching this schema:\n"
+        "8. Return ONLY a valid JSON object matching this schema:\n"
         "{\n"
         "  \"is_pure_greeting\": false,\n"
         "  \"sources\": [\"gmail\"],\n"
@@ -379,12 +385,12 @@ def plan_retrieval_strategy(user_text: str, prior_messages: list[dict[str, Any]]
     clean_norm = normalize_text_for_email_search(clean)
     target_h, target_m, target_day, target_month = extract_gmail_date_time_target(clean_norm)
     has_email = bool(
-        re.search(r"\b(email|emails|mail|mails|gmail|inbox|sent|message|messages)\b", clean_norm, re.I)
+        re.search(r"\b(email|emails|mail|mails|gmail|inbox|sent)\b", clean_norm, re.I)
         or (target_h is not None or target_day is not None)
     )
     if has_email:
         fallback_sources.append("gmail")
-    if re.search(r"\b(google\s*chat|gchat|chat\s*space|spaces?)\b", clean, re.I):
+    if re.search(r"\b(google\s*chat|gchat|chat|chats|chat\s*space|spaces?|dm|messages?)\b", clean, re.I):
         fallback_sources.append("google_chat")
     if re.search(r"\b(github|repo|code|commit|branch|pr)\b", clean, re.I):
         fallback_sources.append("github")
@@ -458,6 +464,15 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
 
     has_email_intent = "gmail" in planned_sources or bool(plan.get("gmail_query"))
     has_gchat_intent = "google_chat" in planned_sources or bool(plan.get("chat_query")) or bool(re.search(r"\b(google\s*chat|gchat|chat\s*space|spaces?)\b", clean_text, re.I))
+
+    # If the user explicitly asked for chat/messages without mentioning emails or mail, do not query Gmail
+    is_explicit_chat_only = (
+        bool(re.search(r"\b(chat|chats|google\s*chat|gchat|dm|slack|message|messages)\b", clean_text, re.I))
+        and not bool(re.search(r"\b(email|emails|mail|mails|gmail|inbox)\b", clean_text, re.I))
+    )
+    if is_explicit_chat_only:
+        has_email_intent = False
+        has_gchat_intent = True
     has_drive_intent = "google_drive" in planned_sources or bool(plan.get("drive_query"))
     has_github_intent = "github" in planned_sources or bool(plan.get("github_query"))
     has_slack_intent = "slack" in planned_sources or bool(plan.get("slack_query"))
