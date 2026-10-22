@@ -10,6 +10,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import HTTPException
 from dotenv import load_dotenv
 
@@ -281,41 +282,53 @@ class GoogleChatConnector:
     def search_messages(self, query: str = "", max_results: int = 15) -> dict:
         """
         Searches recent messages across accessible spaces for query terms or sender.
+        Uses parallel worker execution to scan spaces rapidly.
         """
-        spaces_res = self.list_spaces(page_size=10)
+        spaces_res = self.list_spaces(page_size=30)
         spaces = spaces_res.get("spaces", [])
         matched = []
 
         stop_terms = {"latest", "recent", "last", "newest", "today", "yesterday", "chat", "chats", "message", "messages"}
         q_terms = [w.lower() for w in query.split() if len(w) > 2 and w.lower() not in stop_terms] if query else []
 
-        for sp in spaces:
+        def _fetch_space_msgs(sp):
             sp_name = sp["name"]
             sp_display = sp["displayName"]
+            sp_type = sp.get("type", "SPACE")
+            results = []
             try:
                 msg_res = self.list_messages(sp_name, page_size=20)
                 msgs = msg_res.get("messages", [])
                 for m in msgs:
-                    text = m.get("text", "")
-                    sender = m.get("sender", "")
+                    text = m.get("text", "") or ""
+                    sender = m.get("sender", "") or ""
                     content_lower = f"{sender} {text}".lower()
 
-                    if not q_terms or any(term in content_lower for term in q_terms):
-                        matched.append({
+                    # When q_terms exist, require all terms to match (e.g. 'sagar' AND 'kumar')
+                    if not q_terms or all(term in content_lower for term in q_terms):
+                        display_title = sp_display
+                        if sp_type == "DIRECT_MESSAGE" and sp_display in ["Direct Message", "DM"]:
+                            display_title = f"DM with {sender}" if sender and sender != "User" else "Direct Message"
+                        results.append({
                             "space_id": sp["id"],
-                            "space_name": sp_display,
+                            "space_name": display_title,
                             "sender": sender,
                             "text": text,
                             "createTime": m.get("createTime"),
                             "link": sp["webLink"],
                         })
-                        if len(matched) >= max_results:
-                            break
             except Exception as e:
                 logger.debug("Could not read messages from space %s: %s", sp_name, str(e))
+            return results
 
-            if len(matched) >= max_results * 2:
-                break
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            futures = [executor.submit(_fetch_space_msgs, sp) for sp in spaces[:25]]
+            for future in as_completed(futures):
+                try:
+                    res_list = future.result()
+                    matched.extend(res_list)
+                except Exception:
+                    pass
 
         matched.sort(key=lambda x: x.get("createTime") or "", reverse=True)
         result = matched[:max_results]

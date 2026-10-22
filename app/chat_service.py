@@ -614,6 +614,17 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                     except Exception:
                         pass
 
+                    # If user asked specifically for chat, prioritize chat notifications or direct correspondence from the person
+                    is_explicit_chat_intent = bool(re.search(r"\b(chat|gchat|google\s*chat|slack|dm)\b", clean_text, re.I)) and not bool(re.search(r"\b(emails?|mails?|inbox)\b", clean_text, re.I))
+                    if is_explicit_chat_intent:
+                        filtered_msgs = []
+                        for m_meta in messages_list:
+                            s_lower = (m_meta.get("subject", "") + " " + m_meta.get("from", "")).lower()
+                            if "chat" in s_lower or (planned_g_q and planned_g_q.lower() in m_meta.get("from", "").lower()):
+                                filtered_msgs.append(m_meta)
+                        if filtered_msgs:
+                            messages_list = filtered_msgs
+
                     # Fetch full details of target messages
                     for idx, m_meta in enumerate(messages_list[:fetch_count]):
                         m_id = m_meta["id"]

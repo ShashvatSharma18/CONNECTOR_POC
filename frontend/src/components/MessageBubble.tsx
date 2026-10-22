@@ -10,6 +10,7 @@ import {
   HardDrive,
   MessageSquare,
   GitBranch,
+  Layers,
 } from 'lucide-react';
 import { ChatMessage, RichCard } from '../types/chat';
 
@@ -326,31 +327,44 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
         {/* Source metadata pill */}
         {message.rich_cards && message.rich_cards.length > 0 && (() => {
-          const isChat = message.rich_cards.some((c) => c.type === 'chat' || c.type === 'google_chat');
-          const isDoc = message.rich_cards.some((c) => c.type === 'document');
-          const isRepo = message.rich_cards.some((c) => c.type === 'repo');
-          const isSlack = message.rich_cards.some((c) => c.type === 'slack');
+          const chatCount = message.rich_cards.filter((c) => c.type === 'chat' || c.type === 'google_chat').length;
+          const emailCount = message.rich_cards.filter((c) => c.type === 'email' || !c.type).length;
+          const docCount = message.rich_cards.filter((c) => c.type === 'document').length;
+          const slackCount = message.rich_cards.filter((c) => c.type === 'slack').length;
+          const repoCount = message.rich_cards.filter((c) => c.type === 'repo').length;
+
+          const typesCount = [chatCount, emailCount, docCount, slackCount, repoCount].filter((cnt) => cnt > 0).length;
 
           let sourceIcon = <Mail size={13} color="#EA4335" />;
           let sourceLabel = 'Gmail';
           let sourceDetail = `${message.rich_cards.length} relevant emails found • Latest first`;
 
-          if (isChat) {
+          if (typesCount > 1) {
+            sourceIcon = <Layers size={13} color="#164E33" />;
+            sourceLabel = 'Verified Sources';
+            const breakdown: string[] = [];
+            if (chatCount) breakdown.push(`${chatCount} Google Chat`);
+            if (emailCount) breakdown.push(`${emailCount} Gmail`);
+            if (docCount) breakdown.push(`${docCount} Drive Docs`);
+            if (slackCount) breakdown.push(`${slackCount} Slack`);
+            if (repoCount) breakdown.push(`${repoCount} Repos`);
+            sourceDetail = `${message.rich_cards.length} items (${breakdown.join(', ')})`;
+          } else if (chatCount > 0) {
             sourceIcon = <MessageSquare size={13} color="#16A34A" />;
             sourceLabel = 'Google Chat';
-            sourceDetail = `${message.rich_cards.length} messages found • Space discussions`;
-          } else if (isDoc) {
+            sourceDetail = `${chatCount} messages found • Space discussions`;
+          } else if (docCount > 0) {
             sourceIcon = <HardDrive size={13} color="#D97706" />;
             sourceLabel = 'Google Drive';
-            sourceDetail = `${message.rich_cards.length} documents found`;
-          } else if (isSlack) {
+            sourceDetail = `${docCount} documents found`;
+          } else if (slackCount > 0) {
             sourceIcon = <Hash size={13} color="#7E22CE" />;
             sourceLabel = 'Slack';
-            sourceDetail = `${message.rich_cards.length} messages found`;
-          } else if (isRepo) {
+            sourceDetail = `${slackCount} messages found`;
+          } else if (repoCount > 0) {
             sourceIcon = <GitBranch size={13} color="#6D28D9" />;
             sourceLabel = 'GitHub';
-            sourceDetail = `${message.rich_cards.length} repositories found`;
+            sourceDetail = `${repoCount} repositories found`;
           }
 
           return (
