@@ -217,6 +217,63 @@ def call_groq_llm(messages: list[dict[str, str]]) -> str:
     return "I'm having trouble connecting to the AI language model at the moment. Please try again shortly."
 
 
+def call_groq_rag_synthesis(messages: list[dict[str, str]]) -> dict[str, Any]:
+    """
+    Invoke Groq LLM API requesting structured JSON containing:
+    - answer_markdown: str
+    - key_updates: list[str]
+    - pending_actions: list[str]
+    - suggested_followups: list[str]
+    """
+    if not GROQ_API_KEY:
+        return {
+            "answer_markdown": "GROQ_API_KEY is not configured in .env. Please configure it to enable AI responses.",
+            "key_updates": [],
+            "pending_actions": [],
+            "suggested_followups": [],
+        }
+
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    for model_name in [PRIMARY_MODEL, FALLBACK_MODEL]:
+        payload = {
+            "model": model_name,
+            "messages": messages,
+            "temperature": 0.2,
+            "max_tokens": 1500,
+            "response_format": {"type": "json_object"},
+        }
+        try:
+            resp = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=25)
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_txt = data["choices"][0]["message"]["content"].strip()
+                try:
+                    parsed = json.loads(raw_txt)
+                    if isinstance(parsed, dict) and "answer_markdown" in parsed:
+                        return parsed
+                except Exception:
+                    return {
+                        "answer_markdown": raw_txt,
+                        "key_updates": [],
+                        "pending_actions": [],
+                        "suggested_followups": [],
+                    }
+            logger.warning("Groq model %s returned status %d: %s", model_name, resp.status_code, resp.text)
+        except Exception as e:
+            logger.warning("Error invoking Groq model %s: %s", model_name, str(e))
+
+    return {
+        "answer_markdown": "I'm having trouble connecting to the AI language model at the moment. Please try again shortly.",
+        "key_updates": [],
+        "pending_actions": [],
+        "suggested_followups": [],
+    }
+
+
 def plan_retrieval_strategy(user_text: str, prior_messages: list[dict[str, Any]]) -> dict[str, Any]:
     """
     Intelligent LLM-powered Query Intent & Retrieval Planner for Dabur One Enterprise AI.
@@ -263,13 +320,20 @@ def plan_retrieval_strategy(user_text: str, prior_messages: list[dict[str, Any]]
         "- 'file_share': network shared folders and server files.\n\n"
         "Rules:\n"
         "1. If user is greeting ('hi', 'hello', 'good morning', 'namaste', 'thanks', 'bye') without asking for information, set 'is_pure_greeting': true and 'sources': [].\n"
-        "2. If the user asks about people, what someone sent, latest emails, meeting discussions, agendas, or approvals, include 'gmail' in 'sources'. If documents or decks are mentioned, also include 'google_drive'. If Google Chat, chat messages, or spaces are mentioned, include 'google_chat'.\n"
-        "3. For 'gmail_query':\n"
-        "   - Search for the PERSON or SENDER name (e.g. 'sukhpreet singh kalra') or the core topic/product name (e.g. 'Dabur India', 'Chyawanprash').\n"
-        "   - IMPORTANT: DO NOT include user question/instruction words like 'agenda', 'what is in', 'details', 'summary', 'latest', 'mail', 'updates' inside 'gmail_query' itself, because those are questions for the LLM to analyze and answer from the retrieved message content.\n"
-        "   - If asking generally for the latest email with no person or topic, leave 'gmail_query': '' and set 'gmail_count': 1.\n"
-        "   - If a person or topic is mentioned, set 'gmail_count': 3.\n"
-        "4. Return ONLY a valid JSON object matching this schema:\n"
+        "2. If user asks about being away, absence, leave, or updates from the last 3 days ('away for 3 days', 'chhutti par tha', 'what happened while I was away', 'catch up'):\n"
+        "   - Set 'sources': ['gmail', 'google_drive', 'google_chat'].\n"
+        "   - Set 'gmail_query': '' and set 'gmail_count': 15 to retrieve the batch of all recent messages across the absence window.\n"
+        "   - Set 'drive_query': '' and 'chat_query': ''.\n"
+        "3. If user asks about conversations with a person (e.g. 'Priya ke sath kya baat hui', 'what did Rahul say'):\n"
+        "   - Set 'sources': ['gmail', 'google_chat'].\n"
+        "   - Set 'gmail_query': person's name, 'chat_query': person's name, 'gmail_count': 5.\n"
+        "4. For general single latest email queries ('what is in my last email', 'tell me about latest email'):\n"
+        "   - Set 'sources': ['gmail'], 'gmail_query': '', 'gmail_count': 1.\n"
+        "5. For specific topics, products, or campaigns (e.g. 'Chyawanprash launch', 'marketing updates', 'vendor contract'):\n"
+        "   - Search for the core topic keyword (e.g. 'Chyawanprash').\n"
+        "   - Set 'sources': ['gmail', 'google_drive'], 'gmail_count': 5.\n"
+        "   - IMPORTANT: DO NOT include user question/instruction words like 'agenda', 'what is in', 'details', 'summary', 'latest', 'mail', 'updates' inside 'gmail_query' itself.\n"
+        "6. Return ONLY a valid JSON object matching this schema:\n"
         "{\n"
         "  \"is_pure_greeting\": false,\n"
         "  \"sources\": [\"gmail\"],\n"
@@ -333,18 +397,29 @@ def plan_retrieval_strategy(user_text: str, prior_messages: list[dict[str, Any]]
     if re.search(r"\b(notion|wiki|page)\b", clean, re.I):
         fallback_sources.append("notion")
 
+    # Absence / catch-up query detection
+    is_away_query = bool(re.search(r"\b(away|days?|chhutti|leave|vacation|catch\s*up|behind)\b", clean, re.I))
+    if is_away_query:
+        for s in ["gmail", "google_drive", "google_chat"]:
+            if s not in fallback_sources:
+                fallback_sources.append(s)
+
     # If no source was detected, default to searching Gmail so broad questions still check communications
     if not fallback_sources and not GREETING_REGEX.match(clean):
         fallback_sources.append("gmail")
 
     g_q, g_cnt, _ = extract_gmail_query_and_count(clean)
+    if is_away_query:
+        g_cnt = 15
+        g_q = ""
+
     return {
         "is_pure_greeting": bool(GREETING_REGEX.match(clean) and len(clean.split()) <= 3),
         "sources": fallback_sources,
         "gmail_query": g_q,
         "gmail_count": g_cnt,
-        "drive_query": clean,
-        "chat_query": clean,
+        "drive_query": clean if not is_away_query else "",
+        "chat_query": clean if not is_away_query else "",
         "github_query": clean,
         "slack_query": clean,
         "database_query": clean,
@@ -394,7 +469,6 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
     has_servicenow_intent = "servicenow" in planned_sources
     has_salesforce_intent = "salesforce" in planned_sources
     has_jira_intent = "jira" in planned_sources
-    is_followup = bool(FOLLOWUP_REGEX.search(clean_text))
 
     rich_cards: list[dict[str, Any]] = []
     sources_accessed: list[dict[str, Any]] = []
@@ -410,6 +484,15 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
         if m.get("role") == "assistant" and m.get("rich_cards"):
             prev_cards = m["rich_cards"]
             break
+
+    # Genuine followup: short conversational inquiry referring to previous card context
+    has_explicit_query = bool(plan.get("gmail_query") or plan.get("drive_query") or plan.get("chat_query"))
+    is_followup = bool(
+        prev_cards
+        and not has_explicit_query
+        and FOLLOWUP_REGEX.search(clean_text)
+        and len(clean_text.split()) <= 7
+    )
 
     if is_followup and not (has_email_intent or has_gchat_intent or has_github_intent or has_sharepoint_intent or has_drive_intent or has_jira_intent or has_servicenow_intent or has_salesforce_intent or has_slack_intent or has_database_intent or has_notion_intent):
         if any(c.get("type") == "email" for c in prev_cards):
@@ -459,9 +542,14 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                 else:
                     search_q, fetch_count, is_singular_latest = extract_gmail_query_and_count(clean_text)
 
-                target_h, target_m, target_day, target_month = extract_gmail_date_time_target(clean_normalized)
-                if is_followup:
+                is_away = bool(re.search(r"\b(away|days?|chhutti|leave|vacation|catch\s*up|behind)\b", clean_text, re.I))
+                if is_away:
                     search_q = ""
+                    fetch_count = 15
+                    is_singular_latest = False
+
+                target_h, target_m, target_day, target_month = extract_gmail_date_time_target(clean_normalized)
+                if is_followup and not search_q:
                     fetch_count = 1
 
                 ist = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
@@ -1421,116 +1509,28 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                         card["department"] = "General"
                         card["badge_color"] = "#164E33"
 
-        # Construct Summary & Pending Actions block for email/launch/catch-up inquiries
-        if rich_cards and any(c.get("type") == "email" for c in rich_cards):
-            is_launch_query = bool(re.search(r"\b(chyawanprash|launch|campaign|product)\b", clean_text, re.I))
-            if is_launch_query:
-                summary_block = {
-                    "key_updates": [
-                        "Final creative assets for the launch campaign are ready (Marketing).",
-                        "Retailer list shared and stock confirmation pending (Sales).",
-                        "Packaging design approved for 500g and 1kg packs (R&D).",
-                        "Digital campaign plan shared with channel-wise details (Digital).",
-                    ],
-                    "pending_actions": [
-                        "Confirm stock availability with key retailers.",
-                        "Review and approve digital campaign creatives.",
-                        "Align with production team for packaging timelines.",
-                        "Finalize launch communication plan with regional heads.",
-                    ],
-                    "source_summary": f"Source: {len([c for c in rich_cards if c.get('type') == 'email'])} emails • Gmail",
-                }
-                suggested_followups = [
-                    "Show emails from Sales team only",
-                    "Summarize the digital campaign plan",
-                    "Find attachments related to the launch",
-                    "Check updates from last 3 days",
-                ]
-            else:
-                email_cards = [c for c in rich_cards if c.get("type") == "email"]
-                top_email = email_cards[0]
-                t_title = top_email.get("title", "Recent Email")
-                t_sender = top_email.get("sender_name") or top_email.get("metadata", "").replace("Gmail • ", "")
-                t_snippet = top_email.get("snippet", "")
-
-                updates = [
-                    f"**{t_title}** from {t_sender}.",
-                ]
-                if t_snippet:
-                    clean_s = re.sub(r"\s+", " ", t_snippet).strip()
-                    updates.append(clean_s[:150] + ("..." if len(clean_s) > 150 else ""))
-
-                if len(email_cards) > 1:
-                    updates.append(f"{len(email_cards) - 1} other related email thread(s) identified in inbox.")
-
-                actions = []
-                lower_text = (t_title + " " + t_snippet).lower()
-                if any(w in lower_text for w in ["birthday", "wishes", "celebrat", "congrat"]):
-                    actions.append("Personal / celebratory note — No urgent professional action required.")
-                    actions.append("Acknowledge or reply to sender with thanks when convenient.")
-                elif any(w in lower_text for w in ["approve", "sign off", "urgent", "review"]):
-                    actions.append(f"Review and approve pending request from {t_sender}.")
-                    actions.append("Check attached documents or thread details.")
-                else:
-                    actions.append("Review full email thread details if further action is needed.")
-                    actions.append("Respond to sender with feedback or acknowledgment.")
-
-                summary_block = {
-                    "key_updates": updates,
-                    "pending_actions": actions,
-                    "source_summary": f"Source: {len(email_cards)} email(s) • Gmail",
-                }
-                suggested_followups = [
-                    "Show full email body",
-                    "Find attachments in this thread",
-                    "Check updates from last 3 days",
-                    "Show emails from this sender",
-                ]
-
-        # 3-Day Catch-up Briefing (Use Case C)
-        if re.search(r"\b(teen\s*din|three\s*days|3\s*days|chhutti|leave|away|catch\s*up)\b", clean_text, re.I):
-            summary_block = {
-                "key_updates": [
-                    "Launch timeline and retailer stock allocation finalized for tier-1 distributors.",
-                    "Creative adaptions and digital media calendar approved by brand heads.",
-                    "Product packaging design sign-off completed for 500g and 1kg units.",
-                ],
-                "pending_actions": [
-                    "Review 2 pending approvals in your inbox.",
-                    "Confirm regional sales alignment meeting timing.",
-                    "Sign off on retailer dispatch schedule.",
-                ],
-                "source_summary": "Source: 3-Day Cross-Source Delta (Gmail, Drive, Slack)",
-            }
-            suggested_followups = [
-                "Show urgent pending approvals first",
-                "Check new shared Drive files",
-                "Summarize emails from leadership",
-                "Find attachments related to launch",
-            ]
-
-        # Build prompt for Groq LLM
+        # Build prompt for Groq LLM (Dynamic RAG Synthesis)
         system_prompt = (
             "You are Dabur One, the intelligent, trusted enterprise workplace AI assistant for Shashvat at Dabur.\n"
             "You have access to connected enterprise sources (Gmail, Google Chat, Google Drive, Slack, SQL Database, Notion, SharePoint, Teams, and Local File Share).\n\n"
             "CRITICAL INSTRUCTIONS:\n"
             "1. Base your factual answers STRICTLY on the retrieved evidence provided below. Do NOT invent, assume, or fabricate any emails, files, senders, or content that is not present in the evidence.\n"
-            "2. NEVER output ASCII or Markdown pipe tables (like | Field | Details | or | --- | --- |) for conversational replies. Instead, use clean, readable Markdown with bold headings, bullet points, and short executive paragraphs.\n"
-            "3. If the user asks about emails (e.g. 'what is in my last email', specific threads, or summaries):\n"
-            "   - Parse the email completely and give a structured, executive RAG response:\n"
-            "     * State the Subject, Sender, and Date clearly.\n"
-            "     * Provide a concise Executive Summary explaining what the email is about and its context.\n"
-            "     * Provide Key Highlights / Core Points as clean bullet points.\n"
-            "     * Provide Action Items & Next Steps (explicitly mentioning deadlines, actions required, or note that it's purely informational/celebratory).\n"
-            "4. If the user asks 'What happened while I was away' or asks about updates from the last 3 days:\n"
-            "   - Provide a prioritized, executive-level catch-up summary.\n"
-            "   - Separate Decisions, Key Developments, and Urgent Actions.\n"
-            "5. If the user asks about conversations with a specific person (e.g. 'Priya ke sath kya baat hui'):\n"
-            "   - Summarize the conversation chronologically with decisions, commitments made, and pending questions.\n"
-            "6. If the user asks about company knowledge or product launch plans:\n"
-            "   - Distinguish between draft documents and approved plans.\n"
-            "   - Cite document sections and versions directly.\n"
-            "7. Keep formatting elegant: use ### Section Titles, **bold labels**, and • bullet points."
+            "2. If no matching emails or documents were found in the evidence (for example, if a topic was searched but returned no results):\n"
+            "   - State clearly and honestly that no emails or files matched the query in the connected account.\n"
+            "   - Return EMPTY arrays [] for 'key_updates' and 'pending_actions'.\n"
+            "   - Suggest next steps or alternative search terms.\n"
+            "3. If evidence was retrieved:\n"
+            "   - For email inquiries, extract the exact Subject, Sender, Date, Executive Summary, Key Highlights, and real Action Items.\n"
+            "   - For absence/catch-up inquiries ('away for 3 days', 'what happened while I was away'): synthesize what actually arrived or changed across the retrieved emails and documents. Highlight Key Developments, Decisions, and Urgent Actions.\n"
+            "   - In 'key_updates', list 2-5 concise bullet points of actual events or message summaries from the evidence.\n"
+            "   - In 'pending_actions', list real action items requiring attention. If none (e.g. celebratory or informational emails), leave as [].\n"
+            "4. Return ONLY a valid JSON object matching this schema:\n"
+            "{\n"
+            "  \"answer_markdown\": \"Full, executive-level response in clean Markdown with ### Headings, **bold labels**, and • bullets. Do NOT output pipe tables.\",\n"
+            "  \"key_updates\": [\"update 1\", \"update 2\"],\n"
+            "  \"pending_actions\": [\"action 1\", \"action 2\"],\n"
+            "  \"suggested_followups\": [\"followup 1\", \"followup 2\"]\n"
+            "}"
         )
 
         ai_messages = [{"role": "system", "content": system_prompt}]
@@ -1549,7 +1549,20 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
 
         ai_messages.append({"role": "user", "content": user_prompt_with_evidence})
 
-        assistant_reply = call_groq_llm(ai_messages)
+        # Dynamic RAG Synthesis
+        synth_res = call_groq_rag_synthesis(ai_messages)
+        assistant_reply = synth_res.get("answer_markdown", "")
+        extracted_updates = synth_res.get("key_updates", [])
+        extracted_actions = synth_res.get("pending_actions", [])
+        suggested_followups = synth_res.get("suggested_followups", [])
+
+        # Only display summary block if real evidence exists and has extracted updates or actions
+        if rich_cards and (extracted_updates or extracted_actions):
+            summary_block = {
+                "key_updates": extracted_updates,
+                "pending_actions": extracted_actions,
+                "source_summary": f"Source: {len(rich_cards)} verified item(s) • Live Workspace",
+            }
 
     # 6. Save assistant message to SQLite
     assistant_msg = db.add_message(

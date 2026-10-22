@@ -43,9 +43,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     },
     {
       icon: Sparkles,
-      title: 'Chyawanprash Launch',
-      desc: 'Summarize campaign status, creative assets, and sales alignment',
-      prompt: 'Find the latest emails about the Chyawanprash launch and summarize pending actions.',
+      title: 'Action Items & Decisions',
+      desc: 'Scan recent emails and discussions for approvals and deadlines',
+      prompt: 'Summarize key updates and pending action items from my recent emails.',
       color: '#164E33',
     },
     {
