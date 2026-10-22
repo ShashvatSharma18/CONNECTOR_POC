@@ -63,6 +63,215 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     }
   };
 
+  // Comprehensive Markdown, Table, and List parser for assistant responses
+  const parseInlineMarkdown = (text: string): React.ReactNode[] => {
+    const parts: React.ReactNode[] = [];
+    const regex = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g;
+    let lastIdx = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(text)) !== null) {
+      if (match.index > lastIdx) {
+        parts.push(text.substring(lastIdx, match.index));
+      }
+      const token = match[0];
+      if (token.startsWith('**') && token.endsWith('**')) {
+        parts.push(<strong key={match.index}>{token.slice(2, -2)}</strong>);
+      } else if (token.startsWith('*') && token.endsWith('*')) {
+        parts.push(<em key={match.index}>{token.slice(1, -1)}</em>);
+      } else if (token.startsWith('`') && token.endsWith('`')) {
+        parts.push(<code key={match.index} className="inline-code">{token.slice(1, -1)}</code>);
+      } else if (token.startsWith('[') && token.includes('](')) {
+        const linkMatch = token.match(/\[([^\]]+)\]\(([^)]+)\)/);
+        if (linkMatch) {
+          parts.push(
+            <a key={match.index} href={linkMatch[2]} target="_blank" rel="noreferrer" className="content-link">
+              {linkMatch[1]}
+            </a>
+          );
+        } else {
+          parts.push(token);
+        }
+      } else {
+        parts.push(token);
+      }
+      lastIdx = regex.lastIndex;
+    }
+    if (lastIdx < text.length) {
+      parts.push(text.substring(lastIdx));
+    }
+    return parts;
+  };
+
+  const renderFormattedContent = (content: string) => {
+    if (!content) return null;
+
+    // 1. Normalize linebreaks and row separators like "||" into newlines
+    const normalized = content.replace(/\|\|+/g, '\n|');
+    const rawLines = normalized.split('\n');
+
+    const elements: React.ReactNode[] = [];
+    let currentTableRows: string[][] = [];
+    let currentListItems: string[] = [];
+    let isNumberedList = false;
+
+    const flushTable = (keyPrefix: string) => {
+      if (currentTableRows.length === 0) return;
+      const headerRow = currentTableRows[0];
+      const bodyRows = currentTableRows.slice(1);
+
+      elements.push(
+        <div key={`table-${keyPrefix}`} className="table-responsive-wrapper">
+          <table className="markdown-table">
+            <thead>
+              <tr>
+                {headerRow.map((cell, cIdx) => (
+                  <th key={cIdx}>{parseInlineMarkdown(cell)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {bodyRows.map((row, rIdx) => (
+                <tr key={rIdx}>
+                  {row.map((cell, cIdx) => (
+                    <td key={cIdx}>{parseInlineMarkdown(cell)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      currentTableRows = [];
+    };
+
+    const flushList = (keyPrefix: string) => {
+      if (currentListItems.length === 0) return;
+      if (isNumberedList) {
+        elements.push(
+          <ol key={`ol-${keyPrefix}`} className="content-ol">
+            {currentListItems.map((item, idx) => (
+              <li key={idx} className="content-li">
+                {parseInlineMarkdown(item)}
+              </li>
+            ))}
+          </ol>
+        );
+      } else {
+        elements.push(
+          <ul key={`ul-${keyPrefix}`} className="content-ul">
+            {currentListItems.map((item, idx) => (
+              <li key={idx} className="content-li">
+                {parseInlineMarkdown(item)}
+              </li>
+            ))}
+          </ul>
+        );
+      }
+      currentListItems = [];
+      isNumberedList = false;
+    };
+
+    for (let i = 0; i < rawLines.length; i++) {
+      const line = rawLines[i].trim();
+
+      if (!line) {
+        flushTable(`line-${i}`);
+        flushList(`line-${i}`);
+        continue;
+      }
+
+      // Check if line contains a markdown table row (has pipe)
+      if (line.includes('|')) {
+        flushList(`line-${i}`);
+
+        // Check if there is lead text before the table on the same line
+        const pipeIndex = line.indexOf('|');
+        const leadText = line.substring(0, pipeIndex).trim();
+        const tablePart = line.substring(pipeIndex);
+
+        if (leadText) {
+          flushTable(`pre-lead-${i}`);
+          elements.push(
+            <p key={`lead-${i}`} className="assistant-lead-text">
+              {parseInlineMarkdown(leadText)}
+            </p>
+          );
+        }
+
+        // Check if it's a separator line (e.g. | ------------- | ----------- |)
+        const isSeparator = /^\|?[\s\-:]+(\|[\s\-:]+)+\|?$/.test(tablePart.trim());
+        if (isSeparator) {
+          continue;
+        }
+
+        // Split row into cells
+        const cells = tablePart
+          .split('|')
+          .map((c) => c.trim())
+          .filter((c, idx, arr) => {
+            if (idx === 0 && c === '') return false;
+            if (idx === arr.length - 1 && c === '') return false;
+            return true;
+          });
+
+        if (cells.length > 0) {
+          currentTableRows.push(cells);
+        }
+        continue;
+      }
+
+      // Not a table line, flush pending table
+      flushTable(`line-${i}`);
+
+      // Headers
+      if (line.startsWith('### ')) {
+        flushList(`line-${i}`);
+        elements.push(
+          <h4 key={`h4-${i}`} className="content-h3">
+            {parseInlineMarkdown(line.slice(4))}
+          </h4>
+        );
+      } else if (line.startsWith('## ')) {
+        flushList(`line-${i}`);
+        elements.push(
+          <h3 key={`h3-${i}`} className="content-h2">
+            {parseInlineMarkdown(line.slice(3))}
+          </h3>
+        );
+      } else if (line.startsWith('# ')) {
+        flushList(`line-${i}`);
+        elements.push(
+          <h2 key={`h2-${i}`} className="content-h1">
+            {parseInlineMarkdown(line.slice(2))}
+          </h2>
+        );
+      } else if (/^[-*•]\s+/.test(line)) {
+        // Bullet list item
+        if (isNumberedList) flushList(`num-to-bullet-${i}`);
+        currentListItems.push(line.replace(/^[-*•]\s+/, ''));
+      } else if (/^\d+[\.)]\s+/.test(line)) {
+        // Numbered list item
+        if (!isNumberedList) flushList(`bullet-to-num-${i}`);
+        isNumberedList = true;
+        currentListItems.push(line.replace(/^\d+[\.)]\s+/, ''));
+      } else {
+        // Regular paragraph text
+        flushList(`para-${i}`);
+        elements.push(
+          <p key={`p-${i}`} className="assistant-lead-text">
+            {parseInlineMarkdown(line)}
+          </p>
+        );
+      }
+    }
+
+    flushTable('final');
+    flushList('final');
+
+    return elements;
+  };
+
   return (
     <div className="assistant-message-row">
       <div className="assistant-avatar-badge">
@@ -70,8 +279,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       </div>
 
       <div className="assistant-content-wrapper">
-        {/* Main lead text */}
-        <p className="assistant-lead-text">{message.content}</p>
+        {/* Main lead text / structured markdown */}
+        <div className="assistant-lead-block">
+          {renderFormattedContent(message.content)}
+        </div>
 
         {/* Source metadata pill */}
         {message.rich_cards && message.rich_cards.length > 0 && (

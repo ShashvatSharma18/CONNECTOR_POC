@@ -11,6 +11,15 @@ import {
   FileText,
   Search,
   ExternalLink,
+  GitBranch,
+  Layers,
+  Users,
+  Box,
+  Folder,
+  GraduationCap,
+  Settings2,
+  CheckCircle2,
+  Unlink,
 } from 'lucide-react';
 import { ConnectorSource } from '../types/chat';
 import { ConnectorModal } from './ConnectorModal';
@@ -31,6 +40,7 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
 }) => {
   const [selectedSourceForModal, setSelectedSourceForModal] = useState<ConnectorSource | null>(null);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [loadingConnectorId, setLoadingConnectorId] = useState<string | null>(null);
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ text, type });
@@ -39,11 +49,24 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
     }, 4000);
   };
 
-  const handleSourceClick = (source: ConnectorSource) => {
-    if (source.auth_type === 'oauth' && source.auth_url && !source.is_connected) {
+  const handleConnect = (source: ConnectorSource) => {
+    if (source.auth_type === 'oauth' && source.auth_url) {
       window.location.href = source.auth_url;
     } else {
       setSelectedSourceForModal(source);
+    }
+  };
+
+  const handleDisconnect = async (source: ConnectorSource) => {
+    setLoadingConnectorId(source.id);
+    try {
+      const res = await disconnectConnector(source.id);
+      showToast(res.message || `${source.name} disconnected.`, 'success');
+      await onRefreshConnectors();
+    } catch (err: any) {
+      showToast(err.message || `Failed to disconnect ${source.name}`, 'error');
+    } finally {
+      setLoadingConnectorId(null);
     }
   };
 
@@ -57,27 +80,13 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
     await onRefreshConnectors();
   };
 
-  // Map primary 5 sources to match reference photo
-  const primarySourceIds = ['gmail', 'google_drive', 'slack', 'postgres', 'notion'];
-  const displaySources = primarySourceIds.map((id) => {
-    const found = sources.find((s) => s.id === id);
-    if (found) return found;
+  // Filter out ONLY ServiceNow, Salesforce, and Jira as explicitly instructed by user
+  const excludedIds = ['servicenow', 'salesforce', 'jira'];
+  const displaySources = sources.filter((s) => !excludedIds.includes(s.id.toLowerCase()));
 
-    // Friendly defaults if unseeded
-    if (id === 'gmail') {
-      return { id: 'gmail', name: 'Gmail', type: 'Google Workspace', status: 'Live', is_connected: true, badge_color: 'green' as const };
-    }
-    if (id === 'google_drive') {
-      return { id: 'google_drive', name: 'Google Drive', type: 'Google Workspace', status: 'Live', is_connected: true, badge_color: 'green' as const };
-    }
-    if (id === 'slack') {
-      return { id: 'slack', name: 'Slack', type: 'Team Communication', status: 'Live', is_connected: true, badge_color: 'green' as const };
-    }
-    if (id === 'postgres') {
-      return { id: 'postgres', name: 'PostgreSQL', type: 'Database', status: 'Live', is_connected: true, badge_color: 'green' as const };
-    }
-    return { id: 'notion', name: 'Notion', type: 'Knowledge Base', status: 'Live', is_connected: true, badge_color: 'green' as const };
-  });
+  // Active connected count for the displayed sources
+  const currentConnectedCount = displaySources.filter((s) => s.is_connected).length;
+  const isAllConnected = currentConnectedCount > 0 && currentConnectedCount === displaySources.length;
 
   const recentActivities = [
     {
@@ -95,7 +104,7 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
       color: '#0284C7',
     },
     {
-      text: 'Viewed Notion page',
+      text: 'Viewed Notion knowledge page',
       time: '32 minutes ago',
       icon: FileText,
       bg: '#F3F4F6',
@@ -146,8 +155,44 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
         );
       case 'notion':
         return (
-          <div style={{ background: '#F3F4F6', color: '#374151' }} className="source-icon-container">
+          <div style={{ background: '#F1F5F9', color: '#334155' }} className="source-icon-container">
             <FileText size={16} />
+          </div>
+        );
+      case 'github':
+        return (
+          <div style={{ background: '#EDE9FE', color: '#6D28D9' }} className="source-icon-container">
+            <GitBranch size={16} />
+          </div>
+        );
+      case 'sharepoint':
+        return (
+          <div style={{ background: '#CCFBF1', color: '#0F766E' }} className="source-icon-container">
+            <Layers size={16} />
+          </div>
+        );
+      case 'teams':
+        return (
+          <div style={{ background: '#E0E7FF', color: '#4338CA' }} className="source-icon-container">
+            <Users size={16} />
+          </div>
+        );
+      case 'azure_devops':
+        return (
+          <div style={{ background: '#E0F2FE', color: '#0369A1' }} className="source-icon-container">
+            <Box size={16} />
+          </div>
+        );
+      case 'file_share':
+        return (
+          <div style={{ background: '#E0F7FA', color: '#00838F' }} className="source-icon-container">
+            <Folder size={16} />
+          </div>
+        );
+      case 'lms':
+        return (
+          <div style={{ background: '#FFEDD5', color: '#C2410C' }} className="source-icon-container">
+            <GraduationCap size={16} />
           </div>
         );
       default:
@@ -160,11 +205,32 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
   };
 
   const getSourceCategory = (id: string, defType: string) => {
-    if (id === 'gmail' || id === 'google_drive') return 'Google Workspace';
-    if (id === 'slack') return 'Team Communication';
-    if (id === 'postgres') return 'Database';
-    if (id === 'notion') return 'Knowledge Base';
-    return defType;
+    switch (id) {
+      case 'gmail':
+      case 'google_drive':
+        return 'Google Workspace';
+      case 'slack':
+        return 'Team Communication';
+      case 'postgres':
+      case 'database':
+        return 'Database';
+      case 'notion':
+        return 'Knowledge Base';
+      case 'github':
+        return 'Code Repository';
+      case 'sharepoint':
+        return 'Microsoft 365';
+      case 'teams':
+        return 'Microsoft Teams';
+      case 'azure_devops':
+        return 'Azure DevOps';
+      case 'file_share':
+        return 'File Storage';
+      case 'lms':
+        return 'Learning Portal';
+      default:
+        return defType;
+    }
   };
 
   return (
@@ -184,9 +250,13 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
             fontWeight: 600,
             zIndex: 9999,
             boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
           }}
         >
-          {toastMessage.text}
+          {toastMessage.type === 'success' ? <CheckCircle2 size={16} /> : <Unlink size={16} />}
+          <span>{toastMessage.text}</span>
         </div>
       )}
 
@@ -196,38 +266,89 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
           <Target size={17} className="text-muted" />
           <h3>Connected Sources</h3>
         </div>
-        <span className="pill-all-connected">
-          <Check size={12} />
-          <span>All Connected</span>
+        <span className={isAllConnected ? 'pill-all-connected' : 'pill-counter-connected'}>
+          {isAllConnected ? (
+            <>
+              <Check size={12} />
+              <span>All Connected</span>
+            </>
+          ) : (
+            <span>{currentConnectedCount} / {displaySources.length} Connected</span>
+          )}
         </span>
       </div>
 
       {/* Sources List */}
       <div className="sources-card-list">
-        {displaySources.map((source) => (
-          <div
-            key={source.id}
-            className="source-item-row"
-            onClick={() => handleSourceClick(source)}
-            title="Click to configure or view connection"
-          >
-            <div className="source-row-left">
-              {getSourceIcon(source.id)}
-              <div className="source-text-meta">
-                <span className="source-title">{source.name}</span>
-                <span className="source-category">{getSourceCategory(source.id, source.type)}</span>
+        {displaySources.map((source) => {
+          const isLoading = loadingConnectorId === source.id;
+
+          return (
+            <div
+              key={source.id}
+              className={`source-item-row ${source.is_connected ? 'source-row-connected' : 'source-row-disconnected'}`}
+            >
+              <div className="source-row-left">
+                {getSourceIcon(source.id)}
+                <div className="source-text-meta">
+                  <span className="source-title">{source.name}</span>
+                  <span className="source-category">{getSourceCategory(source.id, source.type)}</span>
+                  {source.account && (
+                    <span className="source-account-meta" title={source.account}>
+                      {source.account}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Status and Action Buttons */}
+              <div className="source-row-right">
+                <span className={`source-status-badge ${source.is_connected ? '' : 'disconnected'}`}>
+                  <span className={`source-status-dot ${source.is_connected ? '' : 'disconnected'}`}></span>
+                  <span>{source.is_connected ? 'Connected' : 'Not Connected'}</span>
+                </span>
+
+                <div className="source-action-group">
+                  {source.is_connected ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      {source.auth_type === 'credentials' && (
+                        <button
+                          type="button"
+                          className="source-icon-action-btn"
+                          title="Configure credentials"
+                          onClick={() => setSelectedSourceForModal(source)}
+                        >
+                          <Settings2 size={13} />
+                        </button>
+                      )}
+                      {source.auth_type !== 'info' && (
+                        <button
+                          type="button"
+                          className="source-btn-disconnect"
+                          disabled={isLoading}
+                          onClick={() => handleDisconnect(source)}
+                          title="Disconnect this service"
+                        >
+                          {isLoading ? '...' : 'Disconnect'}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="source-btn-connect"
+                      onClick={() => handleConnect(source)}
+                      title="Connect this service"
+                    >
+                      <span>Connect</span>
+                      {source.auth_type === 'oauth' && <ExternalLink size={11} />}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span className="source-status-badge">
-                <span className="source-status-dot"></span>
-                <span>Connected</span>
-              </span>
-              <ChevronRight size={14} color="#94A3B8" />
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* 2. Recent Activity Section */}

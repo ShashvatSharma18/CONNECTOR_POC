@@ -1201,21 +1201,44 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                     "Check updates from last 3 days",
                 ]
             else:
+                email_cards = [c for c in rich_cards if c.get("type") == "email"]
+                top_email = email_cards[0]
+                t_title = top_email.get("title", "Recent Email")
+                t_sender = top_email.get("sender_name") or top_email.get("metadata", "").replace("Gmail • ", "")
+                t_snippet = top_email.get("snippet", "")
+
+                updates = [
+                    f"**{t_title}** from {t_sender}.",
+                ]
+                if t_snippet:
+                    clean_s = re.sub(r"\s+", " ", t_snippet).strip()
+                    updates.append(clean_s[:150] + ("..." if len(clean_s) > 150 else ""))
+
+                if len(email_cards) > 1:
+                    updates.append(f"{len(email_cards) - 1} other related email thread(s) identified in inbox.")
+
+                actions = []
+                lower_text = (t_title + " " + t_snippet).lower()
+                if any(w in lower_text for w in ["birthday", "wishes", "celebrat", "congrat"]):
+                    actions.append("Personal / celebratory note — No urgent professional action required.")
+                    actions.append("Acknowledge or reply to sender with thanks when convenient.")
+                elif any(w in lower_text for w in ["approve", "sign off", "urgent", "review"]):
+                    actions.append(f"Review and approve pending request from {t_sender}.")
+                    actions.append("Check attached documents or thread details.")
+                else:
+                    actions.append("Review full email thread details if further action is needed.")
+                    actions.append("Respond to sender with feedback or acknowledgment.")
+
                 summary_block = {
-                    "key_updates": [
-                        f"Retrieved {len(rich_cards)} relevant email communications from your inbox.",
-                        "Key topics and message threads analyzed for immediate follow-up.",
-                    ],
-                    "pending_actions": [
-                        "Review highlighted action items in the top email threads.",
-                        "Respond to outstanding requests flagged by senders.",
-                    ],
-                    "source_summary": f"Source: {len(rich_cards)} emails • Gmail",
+                    "key_updates": updates,
+                    "pending_actions": actions,
+                    "source_summary": f"Source: {len(email_cards)} email(s) • Gmail",
                 }
                 suggested_followups = [
-                    "Summarize top priorities across these emails",
-                    "Find attachments from these threads",
-                    "Show emails from last 3 days",
+                    "Show full email body",
+                    "Find attachments in this thread",
+                    "Check updates from last 3 days",
+                    "Show emails from this sender",
                 ]
 
         # 3-Day Catch-up Briefing (Use Case C)
@@ -1245,11 +1268,14 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
             "You are Dabur One, the intelligent, trusted enterprise workplace AI assistant for Shashvat at Dabur.\n"
             "You have access to connected enterprise sources (Gmail, Google Drive, Slack, SQL Database, Notion, SharePoint, Teams, and Local File Share).\n\n"
             "CRITICAL INSTRUCTIONS:\n"
-            "1. If the user greeting is mixed (e.g., 'Hi, find my latest email'), greet them cordially AND answer their source inquiry.\n"
-            "2. Base your factual answers STRICTLY on the retrieved evidence provided below. Do NOT invent, assume, or fabricate any emails, files, senders, or code that is not present in the evidence.\n"
-            "3. If the user asks about emails (e.g. Chyawanprash launch, marketing updates, or specific threads):\n"
-            "   - Provide a clear, structured briefing with Key Updates, Pending Actions, and Deadlines.\n"
-            "   - State the Subject, Sender, Date & Time clearly.\n"
+            "1. Base your factual answers STRICTLY on the retrieved evidence provided below. Do NOT invent, assume, or fabricate any emails, files, senders, or content that is not present in the evidence.\n"
+            "2. NEVER output ASCII or Markdown pipe tables (like | Field | Details | or | --- | --- |) for conversational replies. Instead, use clean, readable Markdown with bold headings, bullet points, and short executive paragraphs.\n"
+            "3. If the user asks about emails (e.g. 'what is in my last email', specific threads, or summaries):\n"
+            "   - Parse the email completely and give a structured, executive RAG response:\n"
+            "     * State the Subject, Sender, and Date clearly.\n"
+            "     * Provide a concise Executive Summary explaining what the email is about and its context.\n"
+            "     * Provide Key Highlights / Core Points as clean bullet points.\n"
+            "     * Provide Action Items & Next Steps (explicitly mentioning deadlines, actions required, or note that it's purely informational/celebratory).\n"
             "4. If the user asks 'What happened while I was away' or asks about updates from the last 3 days:\n"
             "   - Provide a prioritized, executive-level catch-up summary.\n"
             "   - Separate Decisions, Key Developments, and Urgent Actions.\n"
@@ -1258,7 +1284,7 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
             "6. If the user asks about company knowledge or product launch plans:\n"
             "   - Distinguish between draft documents and approved plans.\n"
             "   - Cite document sections and versions directly.\n"
-            "7. Format your response cleanly using Markdown bullet points and bold headers."
+            "7. Keep formatting elegant: use ### Section Titles, **bold labels**, and • bullet points."
         )
 
         ai_messages = [{"role": "system", "content": system_prompt}]
