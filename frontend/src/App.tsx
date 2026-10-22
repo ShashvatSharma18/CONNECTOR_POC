@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { ChatWindow } from './components/ChatWindow';
 import { KnowledgeHub } from './components/KnowledgeHub';
-import { SourcePanel } from './components/SourcePanel';
 import { ConnectorModal } from './components/ConnectorModal';
 import {
   ChatMessage,
@@ -352,13 +351,6 @@ export const App: React.FC = () => {
             isLoading={isLoading}
           />
         )}
-
-        <SourcePanel
-          sources={sources}
-          connectedCount={connectedCount}
-          totalCount={totalCount}
-          onRefreshConnectors={loadConnectors}
-        />
       </div>
 
       {modalSource && (
