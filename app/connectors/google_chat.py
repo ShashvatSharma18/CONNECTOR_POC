@@ -291,7 +291,13 @@ class GoogleChatConnector:
         spaces = spaces_res.get("spaces", [])
         matched = []
 
-        stop_terms = {"latest", "recent", "last", "newest", "today", "yesterday", "chat", "chats", "message", "messages"}
+        stop_terms = {
+            "latest", "recent", "last", "newest", "today", "yesterday",
+            "chat", "chats", "message", "messages", "unread", "unreads",
+            "give", "summary", "summarize", "tell", "check", "show",
+            "list", "room", "rooms", "space", "spaces", "any", "the",
+            "for", "with", "from", "about", "what", "are", "have", "please"
+        }
         q_terms = [w.lower() for w in query.split() if len(w) > 2 and w.lower() not in stop_terms] if query else []
 
         def _fetch_space_msgs(sp):

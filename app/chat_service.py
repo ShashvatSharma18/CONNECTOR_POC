@@ -338,8 +338,11 @@ def plan_retrieval_strategy(user_text: str, prior_messages: list[dict[str, Any]]
         "7. For specific topics, products, or campaigns (e.g. 'Chyawanprash launch', 'marketing updates', 'vendor contract'):\n"
         "   - Search for the core topic keyword (e.g. 'Chyawanprash').\n"
         "   - Set 'sources': ['gmail', 'google_drive'], 'gmail_count': 5.\n"
-        "   - IMPORTANT: DO NOT include user question/instruction words like 'agenda', 'what is in', 'details', 'summary', 'latest', 'mail', 'updates' inside 'gmail_query' itself.\n"
-        "8. Return ONLY a valid JSON object matching this schema:\n"
+        "8. If user asks about chat rooms, spaces, or channels in Google Chat (e.g. 'any chat rooms', 'what rooms do I have', 'list chat rooms', 'show spaces', 'any chat rooms ??'):\n"
+        "   - Set 'sources': ['google_chat'], 'chat_query': 'spaces'.\n"
+        "9. If user asks for unread chats, latest chats, or a summary of chats (e.g. 'summary of unreads chat in google chat', 'unread messages', 'catch up on chats'):\n"
+        "   - Set 'sources': ['google_chat'], 'chat_query': ''. (DO NOT put words like 'unread', 'summary', or question words into chat_query!)\n"
+        "10. Return ONLY a valid JSON object matching this schema:\n"
         "{\n"
         "  \"is_pure_greeting\": false,\n"
         "  \"sources\": [\"gmail\"],\n"
@@ -1427,43 +1430,97 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                 try:
                     gchat = get_google_chat_connector()
                     chat_q = plan.get("chat_query") or clean_text
-                    stopwords = r"\b(google\s*chat|gchat|chat|space|spaces|messages?|show|list|get|find|search|about|what|is|in|my|last|latest|recent|newest|all)\b"
-                    clean_chat_q = re.sub(stopwords, " ", chat_q, flags=re.I).strip()
-                    clean_chat_q = re.sub(r"[?!.,'\"]+", "", clean_chat_q).strip()
-                    search_res = gchat.search_messages(clean_chat_q, max_results=6)
-                    msgs = search_res.get("messages", [])
-                    if msgs:
-                        sources_accessed.append({
-                            "name": "Google Chat",
-                            "status_text": f"Messages found ({len(msgs)})",
-                            "icon": "google_chat",
-                            "verified": True,
-                        })
-                        evidence_lines = [f"Google Chat Messages (query: '{clean_chat_q or 'recent'}'):"]
-                        for m in msgs:
-                            evidence_lines.append(
-                                f"- Space: {m.get('space_name')} | Sender: {m.get('sender')} | Time: {m.get('createTime')}\n"
-                                f"  Message Context: {m.get('dialogue_context') or m.get('text')}"
-                            )
-                            rich_cards.append({
-                                "type": "chat",
-                                "title": f"Chat in {m.get('space_name')}",
-                                "sender_name": m.get("sender"),
-                                "date_str": str(m.get("createTime", ""))[:19].replace("T", " "),
-                                "snippet": m.get("text"),
-                                "link": m.get("link") or "https://mail.google.com/chat",
-                                "action_label": "Open in Google Chat",
-                                "department": "Google Chat",
+
+                    # Detect if user is asking to list or inspect rooms/spaces
+                    is_asking_rooms = (
+                        chat_q.strip().lower() == "spaces"
+                        or bool(re.search(r"\b(any\s+(chat\s+)?rooms?|list\s+(chat\s+)?rooms?|what\s+(chat\s+)?rooms?|show\s+(chat\s+)?rooms?|what\s+spaces?|list\s+spaces?|available\s+rooms?|available\s+spaces?)\b", clean_text, re.I))
+                        or bool(re.search(r"^\s*any\s+chat\s+rooms\s*\??\s*$", clean_text, re.I))
+                        or (bool(re.search(r"\b(rooms?|spaces?)\b", clean_text, re.I)) and not re.search(r"\b(in\s+the\s+room|in\s+the\s+space|in\s+room)\b", clean_text, re.I) and not bool(re.search(r"\b(message|talk|said|text)\b", clean_text, re.I)))
+                    )
+
+                    if is_asking_rooms:
+                        spaces_res = gchat.list_spaces(page_size=50)
+                        all_spaces = spaces_res.get("spaces", [])
+                        named_rooms = [s for s in all_spaces if s.get("displayName") and s.get("displayName").strip() and s.get("displayName") != "Direct Message"]
+                        dm_spaces = [s for s in all_spaces if not s.get("displayName") or s.get("displayName") == "Direct Message"]
+
+                        if all_spaces:
+                            sources_accessed.append({
+                                "name": "Google Chat",
+                                "status_text": f"Found {len(named_rooms)} chat rooms ({len(all_spaces)} spaces total)",
+                                "icon": "google_chat",
+                                "verified": True,
                             })
-                        retrieved_evidence.append("\n".join(evidence_lines))
+                            evidence_lines = [
+                                f"Google Chat Accessible Rooms & Spaces for Shashvat Sharma (Total: {len(all_spaces)} spaces):",
+                                f"Team Chat Rooms / Project Spaces ({len(named_rooms)} active):"
+                            ]
+                            for idx, rm in enumerate(named_rooms, 1):
+                                r_name = rm.get("displayName")
+                                r_link = rm.get("webLink") or "https://mail.google.com/chat"
+                                evidence_lines.append(f"{idx}. **{r_name}** (Type: {rm.get('type') or 'Space'}, Link: {r_link})")
+                                if idx <= 8:
+                                    rich_cards.append({
+                                        "type": "chat",
+                                        "title": r_name,
+                                        "sender_name": "Google Chat Room",
+                                        "snippet": f"Active collaboration space for team discussions.",
+                                        "link": r_link,
+                                        "action_label": "Open in Google Chat",
+                                        "department": "Google Chat",
+                                    })
+                            evidence_lines.append(f"\nDirect Message Conversations: {len(dm_spaces)} active 1-on-1 conversations.")
+                            retrieved_evidence.append("\n".join(evidence_lines))
+                        else:
+                            retrieved_evidence.append("Google Chat was checked, but no accessible spaces or chat rooms were found.")
                     else:
-                        retrieved_evidence.append(f"Google Chat was searched, but no messages were found for query: '{clean_chat_q}'.")
-                        sources_accessed.append({
-                            "name": "Google Chat",
-                            "status_text": "No messages found",
-                            "icon": "google_chat",
-                            "verified": True,
-                        })
+                        stopwords = r"\b(google\s*chat|gchat|chat|space|spaces|messages?|show|list|get|find|search|about|what|is|in|my|last|latest|recent|newest|all|give|the|summary|summarize|unread|unreads|any|tell|check|room|rooms)\b"
+                        clean_chat_q = re.sub(stopwords, " ", chat_q, flags=re.I).strip()
+                        clean_chat_q = re.sub(r"[?!.,'\"]+", "", clean_chat_q).strip()
+
+                        is_unread_query = bool(re.search(r"\b(unreads?|not read|pending chats?)\b", clean_text, re.I))
+
+                        search_res = gchat.search_messages(clean_chat_q, max_results=8)
+                        msgs = search_res.get("messages", [])
+                        if msgs:
+                            sources_accessed.append({
+                                "name": "Google Chat",
+                                "status_text": f"Messages found ({len(msgs)})",
+                                "icon": "google_chat",
+                                "verified": True,
+                            })
+                            evidence_lines = []
+                            if is_unread_query:
+                                evidence_lines.append(
+                                    "NOTE ON UNREAD STATUS: The Google Chat REST API does not provide a server-side read/unread flag for messages. "
+                                    "Therefore, Cerebro retrieves the latest active messages across your spaces and DMs (ordered newest-first) to give you an unread catch-up briefing:\n"
+                                )
+                            evidence_lines.append(f"Google Chat Recent Messages (query: '{clean_chat_q or 'latest activity'}'):")
+                            for m in msgs:
+                                evidence_lines.append(
+                                    f"- Space: {m.get('space_name')} | Sender: {m.get('sender')} | Time: {m.get('createTime')}\n"
+                                    f"  Message Context: {m.get('dialogue_context') or m.get('text')}"
+                                )
+                                rich_cards.append({
+                                    "type": "chat",
+                                    "title": f"Chat in {m.get('space_name')}",
+                                    "sender_name": m.get("sender"),
+                                    "date_str": str(m.get("createTime", ""))[:19].replace("T", " "),
+                                    "snippet": m.get("text"),
+                                    "link": m.get("link") or "https://mail.google.com/chat",
+                                    "action_label": "Open in Google Chat",
+                                    "department": "Google Chat",
+                                })
+                            retrieved_evidence.append("\n".join(evidence_lines))
+                        else:
+                            retrieved_evidence.append(f"Google Chat was searched, but no messages were found for query: '{clean_chat_q}'.")
+                            sources_accessed.append({
+                                "name": "Google Chat",
+                                "status_text": "No messages found",
+                                "icon": "google_chat",
+                                "verified": True,
+                            })
                 except Exception as e:
                     logger.error("Error retrieving Google Chat data: %s", str(e))
                     retrieved_evidence.append(f"Google Chat retrieval error: {str(e)}")
