@@ -321,7 +321,7 @@ class GoogleChatConnector:
                         if all(term in dm_lower for term in q_terms):
                             is_dm_with_target = True
 
-                for m in msgs:
+                for idx, m in enumerate(msgs):
                     text = m.get("text", "") or ""
                     sender = m.get("sender", "") or ""
                     content_lower = f"{sender} {text}".lower()
@@ -337,11 +337,36 @@ class GoogleChatConnector:
                         if sp_type == "DIRECT_MESSAGE":
                             display_title = f"DM with {dm_other_person or sender}"
 
+                        # Build conversational dialogue window (preceding message + current message + following message)
+                        window_lines = []
+                        # msgs is ordered newest-first:
+                        # idx + 1 is the message before this one (older)
+                        if idx + 1 < len(msgs):
+                            prev_m = msgs[idx + 1]
+                            p_sender = prev_m.get("sender", "User")
+                            p_text = (prev_m.get("text") or "").strip()
+                            if p_text:
+                                window_lines.append(f"{p_sender}: {p_text}")
+
+                        # Current message
+                        window_lines.append(f"{sender}: {text.strip()}")
+
+                        # idx - 1 is the message after this one (newer)
+                        if idx > 0:
+                            next_m = msgs[idx - 1]
+                            n_sender = next_m.get("sender", "User")
+                            n_text = (next_m.get("text") or "").strip()
+                            if n_text:
+                                window_lines.append(f"{n_sender}: {n_text}")
+
+                        dialogue_context = " \n ".join(window_lines) if len(window_lines) > 1 else text
+
                         results.append({
                             "space_id": sp["id"],
                             "space_name": display_title,
                             "sender": sender,
                             "text": text,
+                            "dialogue_context": dialogue_context,
                             "createTime": m.get("createTime"),
                             "link": sp["webLink"],
                         })

@@ -434,6 +434,89 @@ def plan_retrieval_strategy(user_text: str, prior_messages: list[dict[str, Any]]
     }
 
 
+def rerank_and_filter_evidence(query: str, rich_cards: list[dict[str, Any]], max_items: int = 5) -> list[dict[str, Any]]:
+    """
+    Cross-Encoder / LLM Relevance Reranker for enterprise workplace retrieval.
+    Filters out noise (e.g. incidental calendar invites, marketing emails, unrelated forwards)
+    and sorts candidates in descending order of direct relevance to the user's specific query.
+    Falls back gracefully to term-overlap ranking if the LLM call times out or fails.
+    """
+    if not rich_cards or len(rich_cards) <= 1:
+        return rich_cards[:max_items]
+
+    query_lower = query.lower()
+    query_terms = [
+        t for t in re.findall(r"\w+", query_lower)
+        if len(t) > 2 and t not in ["what", "with", "from", "that", "this", "tell", "show", "last", "latest", "recent", "about", "give"]
+    ]
+
+    def token_overlap_score(card: dict[str, Any]) -> float:
+        text = f"{card.get('title', '')} {card.get('metadata', '')} {card.get('snippet', '')} {card.get('sender_name', '')}".lower()
+        score = 0.0
+        # If user explicitly asked about chat and card is chat, boost
+        if any(w in query_lower for w in ["chat", "message", "dm", "gchat"]) and card.get("type") in ["chat", "google_chat", "slack"]:
+            score += 3.0
+        # If user explicitly asked about email and card is email, boost
+        if any(w in query_lower for w in ["email", "mail", "gmail", "inbox"]) and card.get("type") == "email":
+            score += 3.0
+        for term in query_terms:
+            if term in text:
+                score += 1.5
+        return score
+
+    if not GROQ_API_KEY:
+        sorted_cards = sorted(rich_cards, key=token_overlap_score, reverse=True)
+        return sorted_cards[:max_items]
+
+    # Prepare candidate items summary for reranking
+    candidates = []
+    for i, c in enumerate(rich_cards[:15]):
+        c_type = c.get("type", "item")
+        title = c.get("title", "")
+        sender = c.get("sender_name") or c.get("metadata", "")
+        snippet = (c.get("snippet") or "")[:200]
+        candidates.append(f"[{i}] Type: {c_type} | Title: {title} | Sender: {sender} | Excerpt: {snippet}")
+
+    system_prompt = (
+        "You are an enterprise workplace search reranker.\n"
+        "Given the user query and candidate items, return ONLY a JSON object: {\"indices\": [int, ...]} containing 0-based indices in descending order of direct relevance.\n\n"
+        "CRITICAL RULES:\n"
+        "1. If the user query is about chat or messages with a person, strictly prefer Chat/DM items and EXCLUDE automated calendar invitations, Google Drive spreadsheet shares, or marketing emails.\n"
+        "2. If an item is an automated calendar invite or an email where the person is merely mentioned or CC'd, exclude it unless the user specifically asked for calendar invites or emails.\n"
+        "3. Exclude completely irrelevant items that do not help answer the query.\n"
+        "4. Return the top relevant indices only."
+    )
+
+    try:
+        resp = requests.post(
+            GROQ_API_URL,
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+            json={
+                "model": "openai/gpt-oss-120b",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"User Query: {query}\n\nCandidate Items:\n" + "\n".join(candidates)}
+                ],
+                "temperature": 0.0,
+                "response_format": {"type": "json_object"}
+            },
+            timeout=6
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            raw_content = data["choices"][0]["message"]["content"].strip()
+            parsed = json.loads(raw_content)
+            indices = parsed.get("indices", [])
+            filtered = [rich_cards[idx] for idx in indices if isinstance(idx, int) and 0 <= idx < len(rich_cards)]
+            if filtered:
+                return filtered[:max_items]
+    except Exception as e:
+        logger.warning("Groq reranker fallback due to error: %s", str(e))
+
+    sorted_cards = sorted(rich_cards, key=token_overlap_score, reverse=True)
+    return sorted_cards[:max_items]
+
+
 def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
     """
     Process a chat turn:
@@ -1360,7 +1443,7 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                         for m in msgs:
                             evidence_lines.append(
                                 f"- Space: {m.get('space_name')} | Sender: {m.get('sender')} | Time: {m.get('createTime')}\n"
-                                f"  Message: {m.get('text')}"
+                                f"  Message Context: {m.get('dialogue_context') or m.get('text')}"
                             )
                             rich_cards.append({
                                 "type": "chat",
@@ -1536,12 +1619,17 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                         card["department"] = "General"
                         card["badge_color"] = "#164E33"
 
+        # Cross-Encoder / LLM Relevance Reranking & Noise Filtering
+        if len(rich_cards) > 1:
+            rich_cards = rerank_and_filter_evidence(clean_text, rich_cards, max_items=5)
+
         # Build prompt for Groq LLM (Dynamic RAG Synthesis)
         system_prompt = (
             "You are Dabur One, the intelligent, trusted enterprise workplace AI assistant for Shashvat at Dabur.\n"
             "You have access to connected enterprise sources (Gmail, Google Chat, Google Drive, Slack, SQL Database, Notion, SharePoint, Teams, and Local File Share).\n\n"
             "CRITICAL INSTRUCTIONS:\n"
             "1. Base your factual answers STRICTLY on the retrieved evidence provided below. Do NOT invent, assume, or fabricate any emails, files, senders, or content that is not present in the evidence.\n"
+            "   Prioritize the most directly relevant communications that answer the user's specific question. Disregard incidental mentions, automated calendar notifications, or third-party email threads where a person was only in CC unless asked.\n"
             "2. If no matching emails or documents were found in the evidence (for example, if a topic was searched but returned no results):\n"
             "   - State clearly and honestly that no emails or files matched the query in the connected account.\n"
             "   - Return EMPTY arrays [] for 'key_updates' and 'pending_actions'.\n"
