@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { ChatWindow } from './components/ChatWindow';
 import { KnowledgeHub } from './components/KnowledgeHub';
@@ -22,7 +22,7 @@ import {
   configureConnector,
   disconnectConnector,
 } from './services/api';
-import { Search, Bell, ChevronDown, PanelLeftClose, PanelLeftOpen, LogOut } from 'lucide-react';
+import { Search, Bell, ChevronDown, PanelLeftClose, PanelLeftOpen, LogOut, BookOpen, Shield } from 'lucide-react';
 import { LoginPage } from './components/LoginPage';
 
 export const App: React.FC = () => {
@@ -41,6 +41,21 @@ export const App: React.FC = () => {
   const [topSearchQuery, setTopSearchQuery] = useState('');
   const [modalSource, setModalSource] = useState<ConnectorSource | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState<boolean>(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close profile menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setIsProfileMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   // Load initial data
   useEffect(() => {
@@ -232,24 +247,72 @@ export const App: React.FC = () => {
             <span className="bell-badge-dot" />
           </button>
 
-          <div className="navbar-user-profile">
-            <div className="user-avatar-green">SS</div>
-            <div className="user-text-info">
-              <span className="user-display-name">Shashvat Sharma</span>
-              <span className="user-role-label">AI Assistant</span>
+          {/* User Profile Pill with Interactive Dropdown */}
+          <div className="navbar-user-profile-wrapper" ref={profileMenuRef}>
+            <div
+              className={`navbar-user-profile ${isProfileMenuOpen ? 'active' : ''}`}
+              onClick={() => setIsProfileMenuOpen((prev) => !prev)}
+              role="button"
+              tabIndex={0}
+              title="Account settings &amp; logout"
+            >
+              <div className="user-avatar-green">SS</div>
+              <div className="user-text-info">
+                <span className="user-display-name">Shashvat Sharma</span>
+                <span className="user-role-label">AI Assistant</span>
+              </div>
+              <ChevronDown
+                size={14}
+                color="#64748B"
+                className={`user-chevron ${isProfileMenuOpen ? 'rotated' : ''}`}
+              />
             </div>
-            <ChevronDown size={14} color="#64748B" />
-          </div>
 
-          <button
-            type="button"
-            className="navbar-logout-btn"
-            onClick={handleLogout}
-            title="Sign out of Cerebro"
-            aria-label="Sign out"
-          >
-            <LogOut size={16} />
-          </button>
+            {/* Profile Dropdown Menu */}
+            {isProfileMenuOpen && (
+              <div className="profile-dropdown-menu">
+                <div className="profile-dropdown-header">
+                  <div className="user-avatar-green large">SS</div>
+                  <div className="profile-dropdown-user-info">
+                    <span className="profile-name">Shashvat Sharma</span>
+                    <span className="profile-email">shashvat1@appinventiv.com</span>
+                    <span className="profile-status">
+                      <span className="status-dot-green" />
+                      Active • Admin
+                    </span>
+                  </div>
+                </div>
+
+                <div className="profile-dropdown-divider" />
+
+                <button
+                  type="button"
+                  className="profile-dropdown-item"
+                  onClick={() => {
+                    setActiveNavTab('knowledge');
+                    setIsProfileMenuOpen(false);
+                  }}
+                >
+                  <BookOpen size={15} />
+                  <span>Knowledge Hub &amp; Sources</span>
+                </button>
+
+                <div className="profile-dropdown-divider" />
+
+                <button
+                  type="button"
+                  className="profile-dropdown-item logout-item"
+                  onClick={() => {
+                    setIsProfileMenuOpen(false);
+                    handleLogout();
+                  }}
+                >
+                  <LogOut size={15} />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
