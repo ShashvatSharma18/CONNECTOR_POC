@@ -312,7 +312,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         <div className="assistant-bubble-card">
           <div className="assistant-card-header">
             <div className="assistant-card-identity">
-              <span className="assistant-card-name">Dabur One</span>
+              <span className="assistant-card-name">Cerebro</span>
               <span className="assistant-card-badge">Enterprise RAG</span>
             </div>
             {message.timestamp && (

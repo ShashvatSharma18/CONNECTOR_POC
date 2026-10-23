@@ -304,7 +304,7 @@ def plan_retrieval_strategy(user_text: str, prior_messages: list[dict[str, Any]]
     context_str = "\n".join(history_snippets)
 
     system_prompt = (
-        "You are the intelligent Retrieval & Intent Planner for Dabur One Enterprise AI.\n"
+        "You are the intelligent Retrieval & Intent Planner for Cerebro Enterprise AI.\n"
         "Your job is to understand any question from an employee (in English, Hindi, or Hinglish) "
         "WITHOUT requiring any hardcoded keywords or exact commands.\n\n"
         "Available Connected Enterprise Systems:\n"
@@ -1625,7 +1625,7 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
 
         # Build prompt for Groq LLM (Dynamic RAG Synthesis)
         system_prompt = (
-            "You are Dabur One, the intelligent, trusted enterprise workplace AI assistant for Shashvat at Dabur.\n"
+            "You are Cerebro, the intelligent, trusted enterprise workplace AI assistant for Shashvat.\n"
             "You have access to connected enterprise sources (Gmail, Google Chat, Google Drive, Slack, SQL Database, Notion, SharePoint, Teams, and Local File Share).\n\n"
             "CRITICAL INSTRUCTIONS:\n"
             "1. Base your factual answers STRICTLY on the retrieved evidence provided below. Do NOT invent, assume, or fabricate any emails, files, senders, or content that is not present in the evidence.\n"

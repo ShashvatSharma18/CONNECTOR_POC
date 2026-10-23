@@ -192,7 +192,7 @@ export const App: React.FC = () => {
               </svg>
             </div>
             <div className="dabur-brand-text">
-              <h1>Dabur One</h1>
+              <h1>Cerebro</h1>
               <p>Smarter Search. Better Decisions.</p>
             </div>
           </div>

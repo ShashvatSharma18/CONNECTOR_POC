@@ -191,7 +191,7 @@ export const KnowledgeHub: React.FC<KnowledgeHubProps> = ({
             <div>
               <h2>Knowledge Hub &amp; Enterprise Connectors</h2>
               <p>
-                Connect your organization's tools to empower Dabur One RAG with accurate, verified evidence.
+                Connect your organization's tools to empower Cerebro RAG with accurate, verified evidence.
               </p>
             </div>
           </div>

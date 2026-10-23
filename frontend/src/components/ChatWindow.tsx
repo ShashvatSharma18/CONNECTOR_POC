@@ -76,7 +76,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             </svg>
           </div>
           <div className="banner-text">
-            <h2>Dabur One</h2>
+            <h2>Cerebro</h2>
             <p>Enterprise AI Workplace Assistant • Verified RAG Multi-Source Search</p>
           </div>
         </div>
