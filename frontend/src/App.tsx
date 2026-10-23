@@ -22,9 +22,13 @@ import {
   configureConnector,
   disconnectConnector,
 } from './services/api';
-import { Search, Bell, ChevronDown, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Search, Bell, ChevronDown, PanelLeftClose, PanelLeftOpen, LogOut } from 'lucide-react';
+import { LoginPage } from './components/LoginPage';
 
 export const App: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return Boolean(localStorage.getItem('cerebro_auth') || sessionStorage.getItem('cerebro_auth'));
+  });
   const [activeNavTab, setActiveNavTab] = useState<'chat' | 'knowledge' | 'history' | 'settings'>('chat');
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -166,6 +170,16 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('cerebro_auth');
+    sessionStorage.removeItem('cerebro_auth');
+    setIsAuthenticated(false);
+  };
+
+  if (!isAuthenticated) {
+    return <LoginPage onLoginSuccess={() => setIsAuthenticated(true)} />;
+  }
+
   return (
     <div className="app-layout">
       {/* Decorative Botanical Leaf Watermarks */}
@@ -226,6 +240,16 @@ export const App: React.FC = () => {
             </div>
             <ChevronDown size={14} color="#64748B" />
           </div>
+
+          <button
+            type="button"
+            className="navbar-logout-btn"
+            onClick={handleLogout}
+            title="Sign out of Cerebro"
+            aria-label="Sign out"
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </header>
 
