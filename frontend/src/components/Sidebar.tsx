@@ -2,8 +2,10 @@ import React from 'react';
 import {
   Plus,
   MessageSquare,
+  Sparkles,
   BookOpen,
   Trash2,
+  CheckCircle2,
   Mail,
   HardDrive,
   Hash,
@@ -15,11 +17,9 @@ import {
   Box,
   Folder,
   GraduationCap,
-  ChevronsLeft,
-  Search,
+  PanelLeftClose,
 } from 'lucide-react';
 import { ChatSession, ConnectorSource } from '../types/chat';
-import { CerebroBrainLogo } from './CerebroBrainLogo';
 
 interface SidebarProps {
   activeTab?: string;
@@ -39,8 +39,8 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab = 'chat',
   onSelectTab,
-  connectedCount = 6,
-  totalCount = 12,
+  connectedCount = 0,
+  totalCount = 0,
   sessions = [],
   activeSessionId = null,
   onSelectSession,
@@ -50,211 +50,188 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpen = true,
   onToggle,
 }) => {
-  // 6 Connected sources matching the visual reference (Gmail, Google Chat, SQL Database, GitHub, File Share, LMS)
-  const defaultSources: Array<{ id: string; name: string; is_connected: boolean }> = [
-    { id: 'gmail', name: 'Gmail', is_connected: true },
-    { id: 'google_chat', name: 'Google Chat', is_connected: true },
-    { id: 'database', name: 'SQL Database', is_connected: true },
-    { id: 'github', name: 'GitHub', is_connected: true },
-    { id: 'file_share', name: 'File Share', is_connected: true },
-    { id: 'lms', name: 'LMS', is_connected: true },
-  ];
-
   const connectedSources = sources.filter(
     (s) => s.is_connected && !['servicenow', 'salesforce', 'jira'].includes(s.id.toLowerCase())
   );
 
-  const displaySources = connectedSources.length >= 6 ? connectedSources : defaultSources;
-
   const getSourceIcon = (id: string) => {
     switch (id) {
       case 'gmail':
-        return (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" fill="#EA4335" fillOpacity="0.2"/>
-            <path d="M22 6l-10 7L2 6" stroke="#EA4335" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        );
+        return <Mail size={12} color="#DC2626" />;
+      case 'google_drive':
+        return <HardDrive size={12} color="#D97706" />;
       case 'google_chat':
-        return <MessageSquare size={13} color="#10B981" />;
+        return <MessageSquare size={12} color="#16A34A" />;
+      case 'slack':
+        return <Hash size={12} color="#7E22CE" />;
       case 'postgres':
       case 'database':
-        return <Database size={13} color="#38BDF8" />;
-      case 'github':
-        return <GitBranch size={13} color="#E2E8F0" />;
-      case 'file_share':
-        return <Folder size={13} color="#06B6D4" />;
-      case 'lms':
-        return <GraduationCap size={13} color="#F97316" />;
-      case 'google_drive':
-        return <HardDrive size={13} color="#F59E0B" />;
-      case 'slack':
-        return <Hash size={13} color="#C084FC" />;
+        return <Database size={12} color="#0284C7" />;
       case 'notion':
-        return <FileText size={13} color="#94A3B8" />;
+        return <FileText size={12} color="#334155" />;
+      case 'github':
+        return <GitBranch size={12} color="#6D28D9" />;
       case 'sharepoint':
-        return <Layers size={13} color="#2DD4BF" />;
+        return <Layers size={12} color="#0F766E" />;
       case 'teams':
-        return <Users size={13} color="#818CF8" />;
+        return <Users size={12} color="#4338CA" />;
+      case 'azure_devops':
+        return <Box size={12} color="#0369A1" />;
+      case 'file_share':
+        return <Folder size={12} color="#00838F" />;
+      case 'lms':
+        return <GraduationCap size={12} color="#C2410C" />;
       default:
-        return <Search size={13} color="#94A3B8" />;
+        return <CheckCircle2 size={12} color="#164E33" />;
     }
   };
 
   return (
-    <aside className={`cerebro-sidebar ${isOpen ? 'expanded' : 'collapsed'}`}>
-      {/* 1. Brand Header */}
-      <div className="sidebar-brand-header">
-        <div className="sidebar-brand-left" onClick={() => onNewChat && onNewChat()}>
-          <CerebroBrainLogo size={36} showGlow={true} />
-          <div className="sidebar-brand-text">
-            <h1 className="sidebar-brand-title">Cerebro</h1>
-            <p className="sidebar-brand-tagline">Smarter Search. Better Decisions.</p>
-          </div>
-        </div>
-        {onToggle && (
-          <button
-            type="button"
-            className="sidebar-toggle-btn"
-            onClick={onToggle}
-            title="Collapse sidebar"
-            aria-label="Collapse sidebar"
-          >
-            <ChevronsLeft size={16} />
-          </button>
-        )}
-      </div>
-
-      {/* 2. New Chat Button with Shortcut */}
-      <div className="sidebar-new-chat-wrapper">
+    <aside className={`dabur-sidebar ${isOpen ? 'expanded' : 'collapsed'}`}>
+      {/* 1. New Chat Action Button & Collapse Button */}
+      <div className="sidebar-action-header">
         <button
           type="button"
-          className="btn-sidebar-new-chat"
+          className="btn-new-chat-primary"
           onClick={() => {
             if (onSelectTab) onSelectTab('chat');
             if (onNewChat) onNewChat();
           }}
-          title="Start a new chat (⌘ K)"
+          title="Start a new conversation"
         >
-          <div className="btn-new-chat-left">
-            <Plus size={16} />
-            <span>New Chat</span>
-          </div>
-          <span className="kbd-shortcut-pill">⌘ K</span>
+          <Plus size={16} />
+          <span>New Chat</span>
         </button>
+        {onToggle && (
+          <button
+            type="button"
+            className="btn-sidebar-collapse"
+            onClick={onToggle}
+            title="Collapse sidebar"
+          >
+            <PanelLeftClose size={17} />
+          </button>
+        )}
       </div>
 
-      {/* 3. Primary Navigation (Chat & Knowledge Hub) */}
-      <nav className="sidebar-nav-group">
+      {/* 2. Primary Navigation */}
+      <nav className="sidebar-nav-list">
         <button
-          type="button"
-          className={`sidebar-nav-pill ${activeTab === 'chat' ? 'active' : ''}`}
+          className={`sidebar-nav-item ${activeTab === 'chat' ? 'active' : ''}`}
           onClick={() => onSelectTab && onSelectTab('chat')}
-          title="AI Chat Workspace"
+          title="Open AI Chat Assistant"
         >
-          <MessageSquare size={16} className="nav-pill-icon" />
-          <span className="nav-pill-label">Chat</span>
+          <MessageSquare size={16} className="nav-icon" />
+          <span>Chat</span>
+          <Sparkles size={13} className="nav-sparkle" />
         </button>
 
         <button
-          type="button"
-          className={`sidebar-nav-pill ${activeTab === 'knowledge' ? 'active' : ''}`}
+          className={`sidebar-nav-item ${activeTab === 'knowledge' ? 'active' : ''}`}
           onClick={() => onSelectTab && onSelectTab('knowledge')}
-          title="Enterprise Knowledge Hub"
+          title="Manage connected enterprise sources"
         >
-          <BookOpen size={16} className="nav-pill-icon" />
-          <span className="nav-pill-label">Knowledge Hub</span>
-          <span className="sidebar-ratio-pill">
-            {connectedCount}/{totalCount}
-          </span>
+          <BookOpen size={16} className="nav-icon" />
+          <span>Knowledge Hub</span>
+          {totalCount > 0 && (
+            <span className="sidebar-count-badge">
+              {connectedCount}/{totalCount}
+            </span>
+          )}
         </button>
       </nav>
 
-      {/* 4. Recent Conversations Section */}
-      <div className="sidebar-conversations-section">
-        <div className="sidebar-section-title-row">
-          <span className="sidebar-section-heading">RECENT CONVERSATIONS</span>
-          <span className="sidebar-section-count-badge">{sessions.length}</span>
+      {/* 3. Recent Chats Section */}
+      <div className="sidebar-recent-section">
+        <div className="sidebar-section-header">
+          <span>Recent Conversations</span>
+          <span className="sidebar-session-count">{sessions.length}</span>
         </div>
 
-        <div className="sidebar-conversations-list">
-          {sessions.length === 0 ? (
-            <div className="sidebar-empty-state">No recent conversations</div>
-          ) : (
-            sessions.map((sess) => {
-              const isActive = sess.id === activeSessionId;
+        <div className="sidebar-sessions-list">
+          {sessions.length > 0 ? (
+            sessions.slice(0, 10).map((session) => {
+              const isActive = session.id === activeSessionId && activeTab === 'chat';
               return (
                 <div
-                  key={sess.id}
-                  className={`sidebar-conversation-row ${isActive ? 'active' : ''}`}
+                  key={session.id}
+                  className={`sidebar-session-row ${isActive ? 'active' : ''}`}
                   onClick={() => {
                     if (onSelectTab) onSelectTab('chat');
-                    if (onSelectSession) onSelectSession(sess.id);
+                    if (onSelectSession) onSelectSession(session.id);
                   }}
-                  title={sess.title}
+                  title={session.title}
                 >
-                  <MessageSquare size={14} className="conversation-icon" />
-                  <span className="conversation-title-text">{sess.title}</span>
+                  <MessageSquare size={13} className="session-icon" />
+                  <span className="session-title-text">{session.title}</span>
                   {onDeleteSession && (
                     <button
                       type="button"
-                      className="conversation-delete-btn"
+                      className="session-delete-btn"
+                      title="Delete chat"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onDeleteSession(sess.id);
+                        onDeleteSession(session.id);
                       }}
-                      title="Delete conversation"
                     >
-                      <Trash2 size={13} />
+                      <Trash2 size={12} />
                     </button>
                   )}
                 </div>
               );
             })
+          ) : (
+            <span className="sidebar-empty-hint">No past conversations</span>
           )}
         </div>
       </div>
 
-      {/* 5. Active Sources Section (6 Chips in 2 Columns) */}
-      <div className="sidebar-sources-section">
-        <div className="sidebar-section-title-row">
-          <span className="sidebar-section-heading">
-            ACTIVE SOURCES ({displaySources.length})
-          </span>
-          <button
-            type="button"
-            className="sidebar-manage-link"
-            onClick={() => onSelectTab && onSelectTab('knowledge')}
-          >
-            MANAGE &gt;
-          </button>
+      {/* 4. Active Integrations Mini Widget */}
+      <div className="sidebar-integrations-widget">
+        <div
+          className="sidebar-section-header clickable"
+          onClick={() => onSelectTab && onSelectTab('knowledge')}
+          title="Open Knowledge Hub"
+        >
+          <span>Active Sources ({connectedSources.length})</span>
+          <span className="view-all-link">Manage &gt;</span>
         </div>
 
-        <div className="sidebar-sources-grid">
-          {displaySources.slice(0, 6).map((src) => (
+        <div className="sidebar-sources-chips">
+          {connectedSources.map((s) => (
             <div
-              key={src.id}
-              className="sidebar-source-tile"
+              key={s.id}
+              className="sidebar-source-mini-chip"
               onClick={() => onSelectTab && onSelectTab('knowledge')}
-              title={`Connected: ${src.name}`}
+              title={`Connected: ${s.name}`}
             >
-              <div className="source-tile-icon">{getSourceIcon(src.id)}</div>
-              <span className="source-tile-name">{src.name}</span>
+              {getSourceIcon(s.id)}
+              <span>{s.name}</span>
             </div>
           ))}
         </div>
       </div>
 
-      {/* 6. Bottom Brand Card */}
-      <div className="sidebar-bottom-brand-card">
-        <CerebroBrainLogo size={42} showGlow={true} />
-        <div className="bottom-brand-text">
-          <h4 className="bottom-brand-title">Cerebro</h4>
-          <p className="bottom-brand-motto">
-            Search Beyond.<br />
-            Think Ahead.
-          </p>
-        </div>
+      {/* 5. Botanical Footer with Dabur Motto */}
+      <div className="sidebar-botanical-footer">
+        <svg
+          className="quote-leaf-svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+          <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+        </svg>
+        <p className="botanical-quote-text">
+          Goodness<br />
+          of Nature.<br />
+          Powered by<br />
+          Technology.
+        </p>
       </div>
     </aside>
   );

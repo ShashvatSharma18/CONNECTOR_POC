@@ -13,7 +13,6 @@ import {
   Layers,
 } from 'lucide-react';
 import { ChatMessage, RichCard } from '../types/chat';
-import { CerebroBrainLogo } from './CerebroBrainLogo';
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -42,6 +41,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       </div>
     );
   }
+
+  // Assistant Message Avatar - Dabur Leaf
+  const DaburLeafIcon = () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+      <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+    </svg>
+  );
 
   // Email sender initials palette
   const getAvatarColor = (initials: string = 'AP') => {
@@ -298,7 +305,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   return (
     <div className="assistant-message-row">
       <div className="assistant-avatar-badge">
-        <CerebroBrainLogo size={20} showGlow={true} />
+        <DaburLeafIcon />
       </div>
 
       <div className="assistant-content-wrapper">

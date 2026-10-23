@@ -7,8 +7,12 @@ import {
   ChatMessage,
   ChatSession,
   ConnectorSource,
+  RichCard,
+  SourceAccessed,
+  SummaryBlock,
 } from './types/chat';
 import {
+  addMessage,
   createSession,
   deleteSession,
   fetchConnectorsStatus,
@@ -18,7 +22,7 @@ import {
   configureConnector,
   disconnectConnector,
 } from './services/api';
-import { Search, Bell, ChevronDown, ShieldCheck } from 'lucide-react';
+import { Search, Bell, ChevronDown, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [activeNavTab, setActiveNavTab] = useState<'chat' | 'knowledge' | 'history' | 'settings'>('chat');
@@ -27,8 +31,8 @@ export const App: React.FC = () => {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sources, setSources] = useState<ConnectorSource[]>([]);
-  const [connectedCount, setConnectedCount] = useState<number>(6);
-  const [totalCount, setTotalCount] = useState<number>(12);
+  const [connectedCount, setConnectedCount] = useState<number>(5);
+  const [totalCount, setTotalCount] = useState<number>(5);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [topSearchQuery, setTopSearchQuery] = useState('');
   const [modalSource, setModalSource] = useState<ConnectorSource | null>(null);
@@ -163,104 +167,121 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="cerebro-app-frame">
-      {/* 1. Left Translucent Sidebar */}
-      <Sidebar
-        activeTab={activeNavTab}
-        onSelectTab={(tab) => setActiveNavTab(tab as any)}
-        connectedCount={connectedCount}
-        totalCount={totalCount}
-        sessions={sessions}
-        activeSessionId={activeSessionId}
-        onSelectSession={selectSession}
-        onNewChat={handleNewChat}
-        onDeleteSession={handleDeleteSession}
-        sources={sources}
-        isOpen={isSidebarOpen}
-        onToggle={() => setIsSidebarOpen((prev) => !prev)}
-      />
+    <div className="app-layout">
+      {/* Decorative Botanical Leaf Watermarks */}
+      <div className="botanical-watermark-top" />
+      <div className="botanical-watermark-bottom" />
 
-      {/* 2. Main Viewport (Top Header + Center Content) */}
-      <div className="cerebro-main-viewport">
-        {/* Top Floating Glass Navigation Bar */}
-        <header className="cerebro-top-bar">
-          {/* Center Search Input */}
-          <form className="top-search-form" onSubmit={handleTopSearchSubmit}>
-            <div className="top-search-bar-glass">
-              <Search size={15} className="top-search-icon" />
-              <input
-                type="text"
-                placeholder='Ask anything... (e.g. "Show me latest emails from the marketing team")'
-                value={topSearchQuery}
-                onChange={(e) => setTopSearchQuery(e.target.value)}
-              />
-              <span className="top-search-kbd">⌘ K</span>
+      {/* Top Header Navigation Bar */}
+      <header className="top-navbar">
+        {/* Brand Logo & Subtitle with Sidebar Toggle */}
+        <div className="navbar-brand-group">
+          <button
+            type="button"
+            className="navbar-sidebar-toggle-btn"
+            onClick={() => setIsSidebarOpen((prev) => !prev)}
+            title={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+          >
+            {isSidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+          </button>
+          <div className="navbar-brand" onClick={() => handleNewChat()}>
+            <div className="dabur-logo-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+                <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+              </svg>
             </div>
-          </form>
-
-          {/* Right Controls: Notification, Profile, Enterprise Secure */}
-          <div className="top-bar-right-controls">
-            <button type="button" className="top-bar-icon-btn" title="Notifications" aria-label="Notifications">
-              <Bell size={17} />
-              <span className="top-bell-badge" />
-            </button>
-
-            <div className="top-user-profile-pill">
-              <div className="user-avatar-emerald">SS</div>
-              <div className="user-profile-text">
-                <span className="user-profile-name">Shashvat Sharma</span>
-                <span className="user-profile-role">AI Assistant</span>
-              </div>
-              <ChevronDown size={13} className="user-chevron" />
-            </div>
-
-            <div className="enterprise-secure-badge-glass">
-              <ShieldCheck size={14} />
-              <span>Enterprise Secure</span>
+            <div className="dabur-brand-text">
+              <h1>Cerebro</h1>
+              <p>Smarter Search. Better Decisions.</p>
             </div>
           </div>
-        </header>
-
-        {/* Center Main Workspace */}
-        <div className="cerebro-viewport-content">
-          {activeNavTab === 'knowledge' ? (
-            <KnowledgeHub
-              sources={sources}
-              onRefreshConnectors={loadConnectors}
-              onConnectClick={(source) => {
-                if (source.auth_type === 'oauth' && source.auth_url) {
-                  window.location.href = source.auth_url;
-                } else {
-                  setModalSource(source);
-                }
-              }}
-              onDisconnectClick={async (source) => {
-                setActionLoadingId(source.id);
-                try {
-                  await disconnectConnector(source.id);
-                  await loadConnectors();
-                } catch (err) {
-                  console.error('Error disconnecting connector:', err);
-                } finally {
-                  setActionLoadingId(null);
-                }
-              }}
-              onSwitchToChat={() => setActiveNavTab('chat')}
-              isLoadingSourceId={actionLoadingId}
-            />
-          ) : (
-            <ChatWindow
-              messages={messages}
-              sources={sources}
-              onSendMessage={handleSendMessage}
-              onOpenAddSources={() => setActiveNavTab('knowledge')}
-              isLoading={isLoading}
-            />
-          )}
         </div>
+
+        {/* Center Search Bar */}
+        <form className="navbar-search-wrapper" onSubmit={handleTopSearchSubmit}>
+          <div className="navbar-search-bar">
+            <Search size={16} color="#64748B" />
+            <input
+              type="text"
+              placeholder='Ask anything... (e.g. "Show me latest emails from the marketing team")'
+              value={topSearchQuery}
+              onChange={(e) => setTopSearchQuery(e.target.value)}
+            />
+          </div>
+        </form>
+
+        {/* Right User & Notifications Group */}
+        <div className="navbar-right-controls">
+          <button className="navbar-bell-btn" title="Notifications">
+            <Bell size={18} />
+            <span className="bell-badge-dot" />
+          </button>
+
+          <div className="navbar-user-profile">
+            <div className="user-avatar-green">SS</div>
+            <div className="user-text-info">
+              <span className="user-display-name">Shashvat Sharma</span>
+              <span className="user-role-label">AI Assistant</span>
+            </div>
+            <ChevronDown size={14} color="#64748B" />
+          </div>
+        </div>
+      </header>
+
+      {/* Main Body: Left Sidebar + Center Workspace (Chat or KnowledgeHub) */}
+      <div className="main-body-content">
+        <Sidebar
+          activeTab={activeNavTab}
+          onSelectTab={(tab) => setActiveNavTab(tab as any)}
+          connectedCount={connectedCount}
+          totalCount={totalCount}
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          onSelectSession={selectSession}
+          onNewChat={handleNewChat}
+          onDeleteSession={handleDeleteSession}
+          sources={sources}
+          isOpen={isSidebarOpen}
+          onToggle={() => setIsSidebarOpen((prev) => !prev)}
+        />
+
+        {activeNavTab === 'knowledge' ? (
+          <KnowledgeHub
+            sources={sources}
+            onRefreshConnectors={loadConnectors}
+            onConnectClick={(source) => {
+              if (source.auth_type === 'oauth' && source.auth_url) {
+                window.location.href = source.auth_url;
+              } else {
+                setModalSource(source);
+              }
+            }}
+            onDisconnectClick={async (source) => {
+              setActionLoadingId(source.id);
+              try {
+                await disconnectConnector(source.id);
+                await loadConnectors();
+              } catch (err) {
+                console.error('Error disconnecting connector:', err);
+              } finally {
+                setActionLoadingId(null);
+              }
+            }}
+            onSwitchToChat={() => setActiveNavTab('chat')}
+            isLoadingSourceId={actionLoadingId}
+          />
+        ) : (
+          <ChatWindow
+            messages={messages}
+            sources={sources}
+            onSendMessage={handleSendMessage}
+            onOpenAddSources={() => setActiveNavTab('knowledge')}
+            isLoading={isLoading}
+          />
+        )}
       </div>
 
-      {/* Modal Dialog */}
       {modalSource && (
         <ConnectorModal
           source={modalSource}
@@ -277,3 +298,4 @@ export const App: React.FC = () => {
 };
 
 export default App;
+
