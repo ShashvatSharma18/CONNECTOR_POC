@@ -1726,7 +1726,10 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                     else:
                         # Check for documents in test-share or query
                         target_file = None
-                        file_share_root = os.getenv("FILE_SHARE_ROOT", "/home/appinventiv/source-systems-poc/test-share")
+                        file_share_root = os.getenv(
+                            "FILE_SHARE_ROOT",
+                            str(Path(__file__).resolve().parents[1] / "test-share")
+                        )
                         if os.path.isdir(file_share_root):
                             for f in sorted(os.listdir(file_share_root)):
                                 if f.lower().endswith(('.pdf', '.docx', '.xlsx', '.txt', '.md', '.csv', '.png', '.jpg')):

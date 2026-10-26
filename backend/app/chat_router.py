@@ -425,7 +425,7 @@ def get_connectors_status():
                 {
                     "key": "file_share_root",
                     "label": "Local Folder Path",
-                    "placeholder": "/home/appinventiv/source-systems-poc/test-share",
+                    "placeholder": "/home/appinventiv/source-systems-poc/backend/test-share",
                     "type": "text",
                     "required": True,
                     "default_value": os.getenv("FILE_SHARE_ROOT", ""),
