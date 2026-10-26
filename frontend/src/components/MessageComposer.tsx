@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Paperclip,
   Send,
@@ -17,8 +17,13 @@ import {
   GraduationCap,
   Search,
   MessageSquare,
+  FileSearch,
+  X,
+  Loader2,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { ConnectorSource } from '../types/chat';
+import { uploadAndParseDocument, ParsedDocumentResult } from '../services/api';
 
 interface MessageComposerProps {
   onSendMessage: (content: string) => void;
@@ -34,6 +39,10 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   disabled = false,
 }) => {
   const [input, setInput] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [attachedDoc, setAttachedDoc] = useState<ParsedDocumentResult | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Filter ONLY sources that are actually connected and eligible
   const excludedIds = ['servicenow', 'salesforce', 'jira'];
@@ -50,10 +59,46 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     );
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    setUploadError(null);
+    try {
+      const result = await uploadAndParseDocument(file, 'balanced', 'summary');
+      if (result.success) {
+        setAttachedDoc(result);
+      } else {
+        setUploadError(result.error || 'Failed to parse document');
+      }
+    } catch (err: any) {
+      setUploadError(err.message || 'Error uploading document');
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || disabled) return;
-    onSendMessage(input.trim());
+    if ((!input.trim() && !attachedDoc) || disabled || isUploading) return;
+
+    let finalPrompt = input.trim();
+    if (attachedDoc) {
+      const docHeader = `[Attached Document: ${attachedDoc.filename} (${attachedDoc.elements_count || 0} elements, ${(attachedDoc.tables || []).length} tables)]`;
+      const docBody = attachedDoc.text ? attachedDoc.text.slice(0, 2500) : '';
+      if (!finalPrompt) {
+        finalPrompt = `Please analyze and summarize this attached document: ${attachedDoc.filename}.\n\n${docHeader}\n${docBody}`;
+      } else {
+        finalPrompt = `${docHeader}\nContent Excerpt:\n${docBody}\n\nUser Question: ${finalPrompt}`;
+      }
+      setAttachedDoc(null);
+    }
+
+    onSendMessage(finalPrompt);
     setInput('');
   };
 
@@ -84,6 +129,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         return <Folder size={13} color="#00838F" />;
       case 'lms':
         return <GraduationCap size={13} color="#C2410C" />;
+      case 'universal_parser':
+      case 'document_parser':
+        return <FileSearch size={13} color="#059669" />;
       default:
         return <Search size={13} color="#64748B" />;
     }
@@ -91,12 +139,70 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
   return (
     <div className="composer-wrapper">
+      {/* Hidden file input for attachment */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        style={{ display: 'none' }}
+        accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.txt,.md,.csv,.json,.html,.png,.jpg,.jpeg"
+      />
+
+      {/* Upload Status / Attached Document Pill */}
+      {(isUploading || attachedDoc || uploadError) && (
+        <div className="composer-attachment-bar">
+          {isUploading && (
+            <div className="attachment-chip uploading">
+              <Loader2 size={13} className="spin-animation" />
+              <span>Parsing document with Universal Parser ensemble...</span>
+            </div>
+          )}
+
+          {attachedDoc && !isUploading && (
+            <div className="attachment-chip success">
+              <FileSpreadsheet size={14} color="#059669" />
+              <span className="attachment-filename">{attachedDoc.filename}</span>
+              <span className="attachment-meta">
+                ({attachedDoc.elements_count || 0} elements
+                {attachedDoc.tables && attachedDoc.tables.length > 0
+                  ? `, ${attachedDoc.tables.length} tables`
+                  : ''}
+                {attachedDoc.duration_ms ? ` • ${attachedDoc.duration_ms.toFixed(0)}ms` : ''})
+              </span>
+              <button
+                type="button"
+                className="btn-remove-attachment"
+                onClick={() => setAttachedDoc(null)}
+                title="Remove attachment"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
+
+          {uploadError && !isUploading && (
+            <div className="attachment-chip error">
+              <span>{uploadError}</span>
+              <button
+                type="button"
+                className="btn-remove-attachment"
+                onClick={() => setUploadError(null)}
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Floating Main Input Card */}
       <form className="composer-card" onSubmit={handleSubmit}>
         <button
           type="button"
-          className="composer-clip-btn"
-          title="Attach file or context"
+          className={`composer-clip-btn ${attachedDoc ? 'has-attachment' : ''}`}
+          onClick={() => fileInputRef.current?.click()}
+          title="Upload document to parse (PDF, Excel, Word, OCR, Images)"
+          disabled={isUploading || disabled}
         >
           <Paperclip size={19} />
         </button>
@@ -104,16 +210,20 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         <input
           type="text"
           className="composer-input"
-          placeholder='Ask anything... (e.g. "Find emails from marketing about Chyawanprash launch")'
+          placeholder={
+            attachedDoc
+              ? `Ask about ${attachedDoc.filename}... (or press enter to summarize)`
+              : 'Ask anything... (e.g. "Find emails from marketing" or attach a PDF/Excel file)'
+          }
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          disabled={disabled}
+          disabled={disabled || isUploading}
         />
 
         <button
           type="submit"
           className="composer-send-circle"
-          disabled={!input.trim() || disabled}
+          disabled={(!input.trim() && !attachedDoc) || disabled || isUploading}
           title="Send message"
         >
           <Send size={15} />

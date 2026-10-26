@@ -11,6 +11,7 @@ import {
   MessageSquare,
   GitBranch,
   Layers,
+  FileSearch,
 } from 'lucide-react';
 import { ChatMessage, RichCard } from '../types/chat';
 
@@ -397,6 +398,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     return <Hash size={16} color="#7E22CE" className="card-service-icon" />;
                   case 'repo':
                     return <GitBranch size={16} color="#6D28D9" className="card-service-icon" />;
+                  case 'document_parser':
+                  case 'file':
+                    return <FileSearch size={16} color="#059669" className="card-service-icon" />;
                   default:
                     return <Mail size={16} color="#EA4335" className="card-service-icon" />;
                 }

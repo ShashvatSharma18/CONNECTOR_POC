@@ -23,6 +23,7 @@ from app.connectors.slack import get_slack_connector
 from app.connectors.postgres import DatabaseConnector
 from app.connectors.notion import get_notion_connector
 from app.connectors.google_chat import get_google_chat_connector
+from app.connectors.universal_parser import get_universal_parser_connector
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -317,7 +318,8 @@ def plan_retrieval_strategy(user_text: str, prior_messages: list[dict[str, Any]]
         "- 'notion': internal wiki pages, handbook, policies, company notes.\n"
         "- 'sharepoint': corporate policies, department intranets, guidelines.\n"
         "- 'lms': employee training courses, LMS certifications, learning modules.\n"
-        "- 'file_share': network shared folders and server files.\n\n"
+        "- 'file_share': network shared folders and server files.\n"
+        "- 'universal_parser': multimodal document parser ensemble (Parse and Furious), extracting text, tables, OCR, and RAG chunks from PDFs, Word docs, Excel sheets, PPTX presentations, invoices, and image files.\n\n"
         "Rules:\n"
         "1. If user is greeting ('hi', 'hello', 'good morning', 'namaste', 'thanks', 'bye') without asking for information, set 'is_pure_greeting': true and 'sources': [].\n"
         "2. If user asks about being away, absence, leave, or updates from the last 3 days ('away for 3 days', 'chhutti par tha', 'what happened while I was away', 'catch up'):\n"
@@ -342,7 +344,9 @@ def plan_retrieval_strategy(user_text: str, prior_messages: list[dict[str, Any]]
         "   - Set 'sources': ['google_chat'], 'chat_query': 'spaces'.\n"
         "9. If user asks for unread chats, latest chats, or a summary of chats (e.g. 'summary of unreads chat in google chat', 'unread messages', 'catch up on chats'):\n"
         "   - Set 'sources': ['google_chat'], 'chat_query': ''. (DO NOT put words like 'unread', 'summary', or question words into chat_query!)\n"
-        "10. Return ONLY a valid JSON object matching this schema:\n"
+        "10. If user asks to parse, analyze, OCR, read, or extract tables from a document, PDF, file, attachment, invoice, or spreadsheet (e.g. 'parse this PDF', 'extract table from invoice', 'read document', 'analyze Q3 report', 'universal parser'):\n"
+        "   - Set 'sources': ['universal_parser'], 'parser_query': 'parse'.\n"
+        "11. Return ONLY a valid JSON object matching this schema:\n"
         "{\n"
         "  \"is_pure_greeting\": false,\n"
         "  \"sources\": [\"gmail\"],\n"
@@ -350,6 +354,7 @@ def plan_retrieval_strategy(user_text: str, prior_messages: list[dict[str, Any]]
         "  \"gmail_count\": 3,\n"
         "  \"drive_query\": \"\",\n"
         "  \"chat_query\": \"\",\n"
+        "  \"parser_query\": \"\",\n"
         "  \"github_query\": \"\",\n"
         "  \"slack_query\": \"\",\n"
         "  \"database_query\": \"\",\n"
@@ -570,6 +575,11 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
     has_servicenow_intent = "servicenow" in planned_sources
     has_salesforce_intent = "salesforce" in planned_sources
     has_jira_intent = "jira" in planned_sources
+    has_parser_intent = (
+        "universal_parser" in planned_sources
+        or bool(plan.get("parser_query"))
+        or bool(re.search(r"\b(universal\s*parser|parse\s*(this|document|pdf|file|table|sheet)?|ocr|extract\s*table|extract\s*tables|document\s*parser)\b", clean_text, re.I))
+    )
 
     rich_cards: list[dict[str, Any]] = []
     sources_accessed: list[dict[str, Any]] = []
@@ -1650,6 +1660,78 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                     logger.error("Error retrieving Notion data: %s", str(e))
                     retrieved_evidence.append(f"Notion retrieval error: {str(e)}")
 
+        # M. Universal Document Parser Retrieval
+        if has_parser_intent:
+            try:
+                parser_conn = get_universal_parser_connector()
+                st = parser_conn.get_status()
+                if not st.get("is_connected"):
+                    sources_accessed.append({
+                        "name": "Universal Document Parser",
+                        "status_text": "Service Offline",
+                        "icon": "document_parser",
+                        "verified": False,
+                    })
+                    retrieved_evidence.append("Universal Document Parser engine is offline at " + st.get("base_url", "http://127.0.0.1:8000"))
+                else:
+                    sources_accessed.append({
+                        "name": "Universal Document Parser",
+                        "status_text": f"Live (Ensemble v{st.get('version', '0.1.0')})",
+                        "icon": "document_parser",
+                        "verified": True,
+                    })
+                    # Check for documents in test-share or query
+                    target_file = None
+                    file_share_root = os.getenv("FILE_SHARE_ROOT", "/home/appinventiv/source-systems-poc/test-share")
+                    if os.path.isdir(file_share_root):
+                        for f in sorted(os.listdir(file_share_root)):
+                            if f.lower().endswith(('.pdf', '.docx', '.xlsx', '.txt', '.md', '.csv', '.png', '.jpg')):
+                                if f.lower() in clean_text.lower() or not target_file:
+                                    target_file = os.path.join(file_share_root, f)
+                                    if f.lower() in clean_text.lower():
+                                        break
+                    
+                    if target_file and os.path.exists(target_file):
+                        with open(target_file, "rb") as fh:
+                            raw_bytes = fh.read()
+                        fname = os.path.basename(target_file)
+                        parse_res = parser_conn.extract_text_and_tables(raw_bytes, fname, mode="balanced")
+                        doc_text = parse_res.get("text", "")[:3000]
+                        tables = parse_res.get("tables", [])
+                        tbl_summary = f"{len(tables)} tables extracted" if tables else "No tabular elements"
+                        retrieved_evidence.append(
+                            f"Universal Document Parser Parsed Document '{fname}' ({len(raw_bytes)} bytes, {parse_res.get('elements_count')} elements, {parse_res.get('duration_ms', 0):.1f}ms):\n"
+                            f"- Tabular: {tbl_summary}\n"
+                            f"- Content Excerpt:\n{doc_text}"
+                        )
+                        rich_cards.append({
+                            "type": "document_parser",
+                            "title": f"Parsed Document: {fname}",
+                            "metadata": f"Universal Parser • {parse_res.get('elements_count')} elements • {parse_res.get('duration_ms', 0):.1f}ms",
+                            "snippet": (doc_text[:250] + "...") if len(doc_text) > 250 else doc_text,
+                            "action_label": "View Structured Data",
+                        })
+                    else:
+                        formats_str = ", ".join(st.get("supported_formats", []))
+                        modes_str = ", ".join(st.get("modes", []))
+                        retrieved_evidence.append(
+                            "Universal Document Parser (Parse and Furious) is active, connected, and operational.\n"
+                            f"- Supported Formats: {formats_str}\n"
+                            f"- Available Modes: {modes_str}\n"
+                            "- Features: Cell-by-cell table grounding, OCR via Tesseract, prompt-injection defense, and token-bounded RAG chunks.\n"
+                            "- Usage: Upload a file via the paperclip attachment icon or query any document in the workspace."
+                        )
+                        rich_cards.append({
+                            "type": "document_parser",
+                            "title": "Universal Document Parser Engine",
+                            "metadata": f"Ensemble Engine • {len(st.get('supported_formats', []))} formats supported",
+                            "snippet": "Multi-format document parsing ensemble for PDF, Word, Excel, PPTX, OCR, and table grounding.",
+                            "action_label": "Configure Parser",
+                        })
+            except Exception as e:
+                logger.error("Error invoking Universal Document Parser: %s", str(e))
+                retrieved_evidence.append(f"Universal Document Parser error: {str(e)}")
+
         # Enrich email cards with initials, department tags, and branding badges
         for card in rich_cards:
             if card.get("type") == "email":
@@ -1683,7 +1765,7 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
         # Build prompt for Groq LLM (Dynamic RAG Synthesis)
         system_prompt = (
             "You are Cerebro, the intelligent, trusted enterprise workplace AI assistant for Shashvat.\n"
-            "You have access to connected enterprise sources (Gmail, Google Chat, Google Drive, Slack, SQL Database, Notion, SharePoint, Teams, and Local File Share).\n\n"
+            "You have access to connected enterprise sources (Gmail, Google Chat, Google Drive, Slack, SQL Database, Notion, SharePoint, Teams, Universal Document Parser, and Local File Share).\n\n"
             "CRITICAL INSTRUCTIONS:\n"
             "1. Base your factual answers STRICTLY on the retrieved evidence provided below. Do NOT invent, assume, or fabricate any emails, files, senders, or content that is not present in the evidence.\n"
             "   Prioritize the most directly relevant communications that answer the user's specific question. Disregard incidental mentions, automated calendar notifications, or third-party email threads where a person was only in CC unless asked.\n"

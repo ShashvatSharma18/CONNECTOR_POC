@@ -7,6 +7,7 @@ import {
   HardDrive,
   ArrowRight,
   Bot,
+  FileSearch,
 } from 'lucide-react';
 import { ChatMessage, ConnectorSource } from '../types/chat';
 import { MessageBubble } from './MessageBubble';
@@ -61,6 +62,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       desc: 'Retrieve and inspect latest modified files in Google Drive',
       prompt: 'Search Google Drive for latest project files.',
       color: '#D97706',
+    },
+    {
+      icon: FileSearch,
+      title: 'Universal Document Parser',
+      desc: 'Multimodal ensemble: PDF, Word, Excel, OCR & Table Grounding',
+      prompt: 'Tell me about the Universal Document Parser capabilities and how to use it.',
+      color: '#059669',
     },
   ];
 

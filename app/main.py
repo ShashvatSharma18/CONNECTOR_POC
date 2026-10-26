@@ -1,7 +1,7 @@
 from io import BytesIO
 from urllib.parse import quote
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, Response, RedirectResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File
+from fastapi.responses import FileResponse, Response, RedirectResponse, StreamingResponse, JSONResponse
 
 from app.connectors.file_share import get_connector
 from app.connectors.lms import get_lms_connector
@@ -12,6 +12,7 @@ from app.connectors.google_drive import get_google_drive_connector
 from app.connectors.google_chat import get_google_chat_connector
 from app.connectors.servicenow import get_servicenow_connector
 from app.connectors.jira import get_jira_connector
+from app.connectors.universal_parser import get_universal_parser_connector
 from app.connectors.microsoft_graph import MicrosoftGraphError
 from app.connectors.sharepoint import SharePointConnector
 from app.connectors.teams import TeamsConnector
@@ -628,3 +629,58 @@ def azure_devops_file(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except AzureDevOpsError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+# ==========================================
+# Universal Document Parser Endpoints
+# ==========================================
+@app.get("/parser/status")
+def parser_get_status():
+    """Return live status, modes, and format capabilities of Universal Document Parser."""
+    connector = get_universal_parser_connector()
+    return connector.get_status()
+
+
+@app.post("/parser/parse-upload")
+async def parser_parse_upload(
+    file: UploadFile = File(...),
+    mode: str = Query(default="balanced", description="fast | balanced | max_accuracy | offline"),
+    export_format: str = Query(default="chunks", description="chunks | markdown | tables | json | text | html"),
+    pages: str | None = Query(default=None, description="1-based page range e.g. 1-3,5"),
+):
+    """
+    Parse an uploaded document (PDF, Word, Excel, PPTX, Image/OCR, CSV, EML).
+    Returns grounded RAG chunks, extracted structured tables, and verification metrics.
+    """
+    connector = get_universal_parser_connector()
+    contents = await file.read()
+    filename = file.filename or "uploaded_document"
+    
+    if export_format in ["chunks", "summary"]:
+        result = connector.extract_text_and_tables(contents, filename, mode=mode)
+    else:
+        result = connector.parse_file(
+            contents,
+            filename=filename,
+            mode=mode,
+            export_format=export_format,
+            pages=pages,
+        )
+
+    if not result.get("success", False):
+        raise HTTPException(status_code=422, detail=result.get("error", "Failed to parse document"))
+    return result
+
+
+@app.post("/parser/parse-url")
+def parser_parse_url(
+    url: str = Query(..., description="Document URL to parse"),
+    mode: str = Query(default="balanced", description="fast | balanced | max_accuracy"),
+    export_format: str = Query(default="markdown", description="markdown | chunks | text"),
+):
+    """Parse content from an online document or web URL."""
+    connector = get_universal_parser_connector()
+    result = connector.parse_url(url=url, mode=mode, export_format=export_format)
+    if not result.get("success"):
+        raise HTTPException(status_code=422, detail=result.get("error", "Failed to parse URL"))
+    return result

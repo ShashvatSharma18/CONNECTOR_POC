@@ -18,6 +18,7 @@ import {
   Folder,
   GraduationCap,
   PanelLeftClose,
+  FileSearch,
 } from 'lucide-react';
 import { ChatSession, ConnectorSource } from '../types/chat';
 
@@ -81,6 +82,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         return <Folder size={12} color="#00838F" />;
       case 'lms':
         return <GraduationCap size={12} color="#C2410C" />;
+      case 'universal_parser':
+      case 'document_parser':
+        return <FileSearch size={12} color="#059669" />;
       default:
         return <CheckCircle2 size={12} color="#164E33" />;
     }

@@ -121,3 +121,43 @@ export async function disconnectConnector(
   return res.json();
 }
 
+export interface ParsedDocumentResult {
+  success: boolean;
+  filename: string;
+  elements_count?: number;
+  duration_ms?: number;
+  text?: string;
+  tables?: Array<{ id: string; text: string; order: number }>;
+  hidden_text_detected?: boolean;
+  error?: string;
+}
+
+export async function uploadAndParseDocument(
+  file: File,
+  mode: string = 'balanced',
+  exportFormat: string = 'summary'
+): Promise<ParsedDocumentResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const res = await fetch(
+    `${API_BASE}/parser/parse-upload?mode=${encodeURIComponent(mode)}&export_format=${encodeURIComponent(exportFormat)}`,
+    {
+      method: 'POST',
+      body: formData,
+    }
+  );
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => null);
+    throw new Error(errorData?.detail || 'Failed to parse uploaded document');
+  }
+  return res.json();
+}
+
+export async function fetchParserStatus(): Promise<any> {
+  const res = await fetch(`${API_BASE}/parser/status`);
+  if (!res.ok) throw new Error('Failed to fetch parser status');
+  return res.json();
+}
+

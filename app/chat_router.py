@@ -16,6 +16,7 @@ from app.connectors.teams import TeamsConnector
 from app.connectors.slack import SlackConnector
 from app.connectors.postgres import DatabaseConnector
 from app.connectors.notion import NotionConnector
+from app.connectors.universal_parser import get_universal_parser_connector
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +138,9 @@ def get_connectors_status():
     slack_token = bool(os.getenv("SLACK_BOT_TOKEN"))
     db_configured = bool(os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL") or os.path.exists("data/chat_history.db"))
     notion_configured = bool(os.getenv("NOTION_API_KEY"))
+
+    parser_st = get_universal_parser_connector().get_status()
+    parser_connected = parser_st.get("is_connected", False)
 
     slack_account = None
     if slack_token:
@@ -425,6 +429,28 @@ def get_connectors_status():
                     "type": "text",
                     "required": True,
                     "default_value": os.getenv("FILE_SHARE_ROOT", ""),
+                },
+            ],
+        },
+        {
+            "id": "universal_parser",
+            "name": "Universal Document Parser",
+            "type": "document_parser",
+            "status": "Live" if parser_connected else "Offline",
+            "is_connected": bool(parser_connected),
+            "badge_color": "green" if parser_connected else "gray",
+            "account": f"Ensemble Engine (PDF, OCR, Office, Tables)",
+            "auth_type": "info",
+            "description": "High-precision multimodal parsing for PDF, Word, Excel, PPTX, and structured tables with RAG chunking.",
+            "config_fields": [
+                {
+                    "key": "universal_parser_mode",
+                    "label": "Parsing Mode",
+                    "placeholder": "balanced",
+                    "type": "text",
+                    "required": False,
+                    "default_value": os.getenv("UNIVERSAL_PARSER_MODE", "balanced"),
+                    "help_text": "Modes available: fast, balanced, max_accuracy, offline.",
                 },
             ],
         },

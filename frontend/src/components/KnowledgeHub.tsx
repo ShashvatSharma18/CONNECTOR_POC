@@ -21,6 +21,7 @@ import {
   Check,
   Filter,
   MessageSquare,
+  FileSearch,
 } from 'lucide-react';
 import { ConnectorSource } from '../types/chat';
 
@@ -139,6 +140,13 @@ export const KnowledgeHub: React.FC<KnowledgeHubProps> = ({
             <GraduationCap size={22} />
           </div>
         );
+      case 'universal_parser':
+      case 'document_parser':
+        return (
+          <div style={{ background: '#ECFDF5', color: '#059669' }} className="kh-icon-container">
+            <FileSearch size={22} />
+          </div>
+        );
       default:
         return (
           <div style={{ background: '#F1F5F9', color: '#64748B' }} className="kh-icon-container">
@@ -174,6 +182,9 @@ export const KnowledgeHub: React.FC<KnowledgeHubProps> = ({
         return 'Network & Local Files';
       case 'lms':
         return 'Learning Portal';
+      case 'universal_parser':
+      case 'document_parser':
+        return 'Document AI & OCR';
       default:
         return defType;
     }
