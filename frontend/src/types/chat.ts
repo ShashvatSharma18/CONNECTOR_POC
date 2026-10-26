@@ -38,6 +38,9 @@ export interface RichCard {
   department?: string;
   date_str?: string;
   badge_color?: string;
+  full_content?: string;
+  tables?: any[];
+  elements_count?: number;
 }
 
 export interface SourceAccessed {

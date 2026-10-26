@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   User,
   CheckCheck,
   ExternalLink,
+  Eye,
   Mail,
   FileText,
   Database,
@@ -12,8 +13,10 @@ import {
   GitBranch,
   Layers,
   FileSearch,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { ChatMessage, RichCard } from '../types/chat';
+import { DocumentPreviewModal, DocumentPreviewData } from './DocumentPreviewModal';
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -24,6 +27,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   message,
   onFollowupClick,
 }) => {
+  const [previewDoc, setPreviewDoc] = useState<DocumentPreviewData | null>(null);
   const isUser = message.role === 'user';
 
   if (isUser) {
@@ -406,7 +410,24 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 }
               };
 
+              const isDocParser = card.type === 'document_parser' || Boolean(card.full_content);
+
               const handleActionClick = () => {
+                if (isDocParser) {
+                  const cleanFilename = card.title
+                    .replace(/^Active Document:\s*/i, '')
+                    .replace(/^Parsed Document:\s*/i, '');
+                  setPreviewDoc({
+                    title: card.title,
+                    filename: cleanFilename,
+                    text: card.full_content || card.snippet || '',
+                    elements_count: card.elements_count,
+                    tables: card.tables || [],
+                    metadata: card.metadata,
+                  });
+                  return;
+                }
+
                 let rawLink = card.link || '';
                 if (card.type === 'email' || rawLink.includes('mail.google.com') || rawLink.includes('/gmail/messages/')) {
                   // If rawLink mistakenly contains /mail/u/some.email@domain.com/
@@ -439,9 +460,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     {/* Sender Initials Avatar */}
                     <div
                       className="sender-initials-badge"
-                      style={{ background: avatarBg }}
+                      style={{ background: isDocParser ? '#059669' : avatarBg }}
                     >
-                      {initials}
+                      {isDocParser ? 'DP' : initials}
                     </div>
 
                     {/* Subject, sender, snippet */}
@@ -450,13 +471,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                         <span
                           className="card-subject"
                           onClick={handleActionClick}
+                          title={isDocParser ? "Click to inspect extracted document" : undefined}
+                          style={isDocParser ? { cursor: 'pointer' } : undefined}
                         >
                           {card.title}
                         </span>
                       </div>
 
                       <div className="card-sender-meta">
-                        <span>{card.sender_name || 'Marketing'}</span>
+                        <span>{card.sender_name || (isDocParser ? 'Universal Document Parser' : 'Marketing')}</span>
                         {card.date_str && <span> • {card.date_str}</span>}
                       </div>
 
@@ -471,13 +494,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     <button
                       className="btn-view-email"
                       onClick={handleActionClick}
-                      title={`Open in ${dept}`}
+                      title={isDocParser ? "Inspect extracted document content" : `Open in ${dept}`}
                     >
-                      <span>{card.action_label || (card.type === 'chat' ? 'Open Chat' : 'View email')}</span>
-                      <ExternalLink size={12} />
+                      <span>
+                        {card.action_label || (isDocParser ? 'Inspect Document' : card.type === 'chat' ? 'Open Chat' : 'View email')}
+                      </span>
+                      {isDocParser ? <Eye size={12} /> : <ExternalLink size={12} />}
                     </button>
 
-                    <span className="department-badge">{dept}</span>
+                    <span className="department-badge">{isDocParser ? 'Document Parser' : dept}</span>
                   </div>
                 </div>
               );
@@ -547,6 +572,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         )}
         </div>
       </div>
+
+      {previewDoc && (
+        <DocumentPreviewModal
+          document={previewDoc}
+          onClose={() => setPreviewDoc(null)}
+        />
+      )}
     </div>
   );
 };

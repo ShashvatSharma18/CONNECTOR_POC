@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ShieldCheck,
   Sparkles,
@@ -14,6 +14,7 @@ import {
 import { ChatMessage, ConnectorSource, ActiveDocumentState } from '../types/chat';
 import { MessageBubble } from './MessageBubble';
 import { MessageComposer } from './MessageComposer';
+import { DocumentPreviewModal } from './DocumentPreviewModal';
 
 interface ChatWindowProps {
   messages: ChatMessage[];
@@ -36,6 +37,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   onOpenAddSources,
   isLoading = false,
 }) => {
+  const [showActiveDocModal, setShowActiveDocModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -106,7 +108,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       {/* Active Document Session Strip (Persistent Context) */}
       {activeDocument && (
         <div className="chat-active-document-strip">
-          <div className="active-doc-left">
+          <div
+            className="active-doc-left clickable"
+            onClick={() => setShowActiveDocModal(true)}
+            title="Click to view full extracted document text"
+            style={{ cursor: 'pointer' }}
+          >
             <div className="active-doc-icon-badge">
               <FileSpreadsheet size={15} />
             </div>
@@ -227,6 +234,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           />
         </div>
       </div>
+
+      {showActiveDocModal && activeDocument && (
+        <DocumentPreviewModal
+          document={{
+            title: activeDocument.filename,
+            filename: activeDocument.filename,
+            text: activeDocument.text || '',
+            elements_count: activeDocument.elements_count,
+            tables: activeDocument.tables,
+            duration_ms: activeDocument.duration_ms,
+          }}
+          onClose={() => setShowActiveDocModal(false)}
+        />
+      )}
     </main>
   );
 };

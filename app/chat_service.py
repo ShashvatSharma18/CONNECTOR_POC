@@ -1712,9 +1712,16 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                         rich_cards.append({
                             "type": "document_parser",
                             "title": f"Active Document: {doc_fname}",
-                            "metadata": "Universal Parser • Active Session Context",
+                            "metadata": f"Universal Parser • {active_doc.get('elements_count', 0)} elements • Active Session",
                             "snippet": (doc_body[:250] + "...") if len(doc_body) > 250 else doc_body,
-                            "action_label": "Document Loaded",
+                            "action_label": "Inspect Document",
+                            "full_content": doc_body,
+                            "tables": active_doc.get("tables", []),
+                            "elements_count": active_doc.get("elements_count", 0),
+                            "department": "Document Parser",
+                            "sender_name": "Universal Document Parser",
+                            "sender_initials": "DP",
+                            "badge_color": "#059669",
                         })
                     else:
                         # Check for documents in test-share or query
@@ -1746,7 +1753,14 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                                 "title": f"Parsed Document: {fname}",
                                 "metadata": f"Universal Parser • {parse_res.get('elements_count')} elements • {parse_res.get('duration_ms', 0):.1f}ms",
                                 "snippet": (doc_text[:250] + "...") if len(doc_text) > 250 else doc_text,
-                                "action_label": "View Structured Data",
+                                "action_label": "Inspect Document",
+                                "full_content": doc_text,
+                                "tables": tables,
+                                "elements_count": parse_res.get("elements_count", 0),
+                                "department": "Document Parser",
+                                "sender_name": "Universal Document Parser",
+                                "sender_initials": "DP",
+                                "badge_color": "#059669",
                             })
                         else:
                             formats_str = ", ".join(st.get("supported_formats", []))
@@ -1763,7 +1777,21 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                                 "title": "Universal Document Parser Engine",
                                 "metadata": f"Ensemble Engine • {len(st.get('supported_formats', []))} formats supported",
                                 "snippet": "Multi-format document parsing ensemble for PDF, Word, Excel, PPTX, OCR, and table grounding.",
-                                "action_label": "Configure Parser",
+                                "action_label": "Inspect Engine",
+                                "full_content": (
+                                    "Universal Document Parser (Parse and Furious) Capabilities:\n\n"
+                                    f"• Supported Formats: {formats_str}\n"
+                                    f"• Available Modes: {modes_str}\n"
+                                    "• Features:\n"
+                                    "  - Cell-by-cell table grounding\n"
+                                    "  - Direct OCR & visual figure text extraction\n"
+                                    "  - Prompt-injection & invisible text defense\n"
+                                    "  - Token-bounded RAG chunks"
+                                ),
+                                "department": "Document Parser",
+                                "sender_name": "Universal Document Parser",
+                                "sender_initials": "DP",
+                                "badge_color": "#059669",
                             })
             except Exception as e:
                 logger.error("Error invoking Universal Document Parser: %s", str(e))
