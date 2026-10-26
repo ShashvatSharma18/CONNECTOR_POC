@@ -61,6 +61,10 @@ class ChatHistoryDB:
                 conn.execute("ALTER TABLE chat_messages ADD COLUMN suggested_followups TEXT;")
             except Exception:
                 pass
+            try:
+                conn.execute("ALTER TABLE chat_sessions ADD COLUMN active_document TEXT;")
+            except Exception:
+                pass
             conn.commit()
 
     def create_session(self, title: str = "New Chat") -> dict[str, Any]:
@@ -147,8 +151,37 @@ class ChatHistoryDB:
                 parsed_messages.append(msg_dict)
 
             res = dict(session)
+            if res.get("active_document"):
+                try:
+                    res["active_document"] = json.loads(res["active_document"])
+                except Exception:
+                    res["active_document"] = None
+            else:
+                res["active_document"] = None
             res["messages"] = parsed_messages
             return res
+
+    def set_session_document(self, session_id: str, document_data: dict[str, Any] | None) -> None:
+        doc_json = json.dumps(document_data) if document_data else None
+        now = datetime.now(timezone.utc).isoformat()
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE chat_sessions SET active_document = ?, updated_at = ? WHERE id = ?",
+                (doc_json, now, session_id),
+            )
+            conn.commit()
+
+    def get_session_document(self, session_id: str) -> dict[str, Any] | None:
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT active_document FROM chat_sessions WHERE id = ?", (session_id,)
+            ).fetchone()
+            if row and row["active_document"]:
+                try:
+                    return json.loads(row["active_document"])
+                except Exception:
+                    return None
+            return None
 
     def update_session_title(self, session_id: str, title: str) -> bool:
         now = datetime.now(timezone.utc).isoformat()

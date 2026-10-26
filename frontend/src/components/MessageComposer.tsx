@@ -22,13 +22,16 @@ import {
   Loader2,
   FileSpreadsheet,
 } from 'lucide-react';
-import { ConnectorSource } from '../types/chat';
+import { ConnectorSource, ActiveDocumentState } from '../types/chat';
 import { uploadAndParseDocument, ParsedDocumentResult } from '../services/api';
 
 interface MessageComposerProps {
   onSendMessage: (content: string) => void;
   onOpenAddSources?: () => void;
   sources?: ConnectorSource[];
+  activeDocument?: ActiveDocumentState | null;
+  onAttachDocument?: (doc: ActiveDocumentState) => void;
+  onClearActiveDocument?: () => void;
   disabled?: boolean;
 }
 
@@ -36,12 +39,14 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   onSendMessage,
   onOpenAddSources,
   sources = [],
+  activeDocument,
+  onAttachDocument,
+  onClearActiveDocument,
   disabled = false,
 }) => {
   const [input, setInput] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [attachedDoc, setAttachedDoc] = useState<ParsedDocumentResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Filter ONLY sources that are actually connected and eligible
@@ -68,7 +73,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     try {
       const result = await uploadAndParseDocument(file, 'balanced', 'summary');
       if (result.success) {
-        setAttachedDoc(result);
+        if (onAttachDocument) {
+          onAttachDocument(result);
+        }
       } else {
         setUploadError(result.error || 'Failed to parse document');
       }
@@ -84,18 +91,17 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!input.trim() && !attachedDoc) || disabled || isUploading) return;
+    if ((!input.trim() && !activeDocument) || disabled || isUploading) return;
 
     let finalPrompt = input.trim();
-    if (attachedDoc) {
-      const docHeader = `[Attached Document: ${attachedDoc.filename} (${attachedDoc.elements_count || 0} elements, ${(attachedDoc.tables || []).length} tables)]`;
-      const docBody = attachedDoc.text ? attachedDoc.text.slice(0, 2500) : '';
+    if (activeDocument) {
+      const docHeader = `[Attached Document: ${activeDocument.filename} (${activeDocument.elements_count || 0} elements, ${(activeDocument.tables || []).length} tables)]`;
+      const docBody = activeDocument.text ? activeDocument.text.slice(0, 2500) : '';
       if (!finalPrompt) {
-        finalPrompt = `Please analyze and summarize this attached document: ${attachedDoc.filename}.\n\n${docHeader}\n${docBody}`;
+        finalPrompt = `Please analyze and summarize this attached document: ${activeDocument.filename}.\n\n${docHeader}\n${docBody}`;
       } else {
         finalPrompt = `${docHeader}\nContent Excerpt:\n${docBody}\n\nUser Question: ${finalPrompt}`;
       }
-      setAttachedDoc(null);
     }
 
     onSendMessage(finalPrompt);
@@ -149,7 +155,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       />
 
       {/* Upload Status / Attached Document Pill */}
-      {(isUploading || attachedDoc || uploadError) && (
+      {(isUploading || activeDocument || uploadError) && (
         <div className="composer-attachment-bar">
           {isUploading && (
             <div className="attachment-chip uploading">
@@ -158,22 +164,22 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
             </div>
           )}
 
-          {attachedDoc && !isUploading && (
+          {activeDocument && !isUploading && (
             <div className="attachment-chip success">
               <FileSpreadsheet size={14} color="#059669" />
-              <span className="attachment-filename">{attachedDoc.filename}</span>
+              <span className="attachment-filename">{activeDocument.filename}</span>
               <span className="attachment-meta">
-                ({attachedDoc.elements_count || 0} elements
-                {attachedDoc.tables && attachedDoc.tables.length > 0
-                  ? `, ${attachedDoc.tables.length} tables`
+                ({activeDocument.elements_count || 0} elements
+                {activeDocument.tables && activeDocument.tables.length > 0
+                  ? `, ${activeDocument.tables.length} tables`
                   : ''}
-                {attachedDoc.duration_ms ? ` • ${attachedDoc.duration_ms.toFixed(0)}ms` : ''})
+                {activeDocument.duration_ms ? ` • ${activeDocument.duration_ms.toFixed(0)}ms` : ''})
               </span>
               <button
                 type="button"
                 className="btn-remove-attachment"
-                onClick={() => setAttachedDoc(null)}
-                title="Remove attachment"
+                onClick={() => onClearActiveDocument?.()}
+                title="Detach document from this chat"
               >
                 <X size={12} />
               </button>
@@ -199,7 +205,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       <form className="composer-card" onSubmit={handleSubmit}>
         <button
           type="button"
-          className={`composer-clip-btn ${attachedDoc ? 'has-attachment' : ''}`}
+          className={`composer-clip-btn ${activeDocument ? 'has-attachment' : ''}`}
           onClick={() => fileInputRef.current?.click()}
           title="Upload document to parse (PDF, Excel, Word, OCR, Images)"
           disabled={isUploading || disabled}
@@ -211,8 +217,8 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
           type="text"
           className="composer-input"
           placeholder={
-            attachedDoc
-              ? `Ask about ${attachedDoc.filename}... (or press enter to summarize)`
+            activeDocument
+              ? `Ask anything about ${activeDocument.filename}... (stays active across this chat)`
               : 'Ask anything... (e.g. "Find emails from marketing" or attach a PDF/Excel file)'
           }
           value={input}
@@ -223,7 +229,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         <button
           type="submit"
           className="composer-send-circle"
-          disabled={(!input.trim() && !attachedDoc) || disabled || isUploading}
+          disabled={(!input.trim() && !activeDocument) || disabled || isUploading}
           title="Send message"
         >
           <Send size={15} />

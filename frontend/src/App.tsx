@@ -7,6 +7,7 @@ import {
   ChatMessage,
   ChatSession,
   ConnectorSource,
+  ActiveDocumentState,
   RichCard,
   SourceAccessed,
   SummaryBlock,
@@ -21,6 +22,8 @@ import {
   sendChatMessage,
   configureConnector,
   disconnectConnector,
+  setSessionDocument,
+  clearSessionDocument,
 } from './services/api';
 import { Search, Bell, ChevronDown, PanelLeftClose, PanelLeftOpen, LogOut, BookOpen, Shield } from 'lucide-react';
 import { LoginPage } from './components/LoginPage';
@@ -42,6 +45,7 @@ export const App: React.FC = () => {
   const [modalSource, setModalSource] = useState<ConnectorSource | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState<boolean>(false);
+  const [activeDocument, setActiveDocument] = useState<ActiveDocumentState | null>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
 
   // Close profile menu when clicking outside
@@ -101,6 +105,7 @@ export const App: React.FC = () => {
     try {
       const details = await fetchSessionDetails(sessionId);
       setMessages(details.messages || []);
+      setActiveDocument(details.active_document || null);
     } catch (err) {
       console.error('Error fetching session details:', err);
     }
@@ -112,8 +117,31 @@ export const App: React.FC = () => {
       setSessions((prev) => [newSession, ...prev]);
       setActiveSessionId(newSession.id);
       setMessages([]);
+      setActiveDocument(null);
     } catch (err) {
       console.error('Error creating new chat:', err);
+    }
+  };
+
+  const handleAttachDocument = async (docData: any) => {
+    setActiveDocument(docData);
+    if (activeSessionId) {
+      try {
+        await setSessionDocument(activeSessionId, docData);
+      } catch (e) {
+        console.error('Failed to attach document to session:', e);
+      }
+    }
+  };
+
+  const handleClearActiveDocument = async () => {
+    setActiveDocument(null);
+    if (activeSessionId) {
+      try {
+        await clearSessionDocument(activeSessionId);
+      } catch (e) {
+        console.error('Failed to clear active document:', e);
+      }
     }
   };
 
@@ -362,6 +390,9 @@ export const App: React.FC = () => {
           <ChatWindow
             messages={messages}
             sources={sources}
+            activeDocument={activeDocument}
+            onAttachDocument={handleAttachDocument}
+            onClearActiveDocument={handleClearActiveDocument}
             onSendMessage={handleSendMessage}
             onOpenAddSources={() => setActiveNavTab('knowledge')}
             isLoading={isLoading}

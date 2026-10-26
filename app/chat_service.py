@@ -545,6 +545,23 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
     # 2. Get session details and recent history
     session = db.get_session(session_id)
     history_messages = session.get("messages", []) if session else []
+    active_doc = session.get("active_document") if session else None
+
+    # If current message has an attached document, persist it as the session's active document
+    if "[Attached Document:" in clean_text:
+        doc_match = re.search(r"\[Attached Document:\s*([^(\]\n]+)(?:\(([^)]*)\))?\]", clean_text)
+        doc_filename = doc_match.group(1).strip() if doc_match else "Attached Document"
+        body_parts = clean_text.split("User Question:")
+        raw_doc_body = body_parts[0] if len(body_parts) > 1 else clean_text
+        doc_content = re.sub(r"\[Attached Document:[^\]]+\]", "", raw_doc_body).strip()
+        doc_content = re.sub(r"^Content Excerpt:\s*", "", doc_content).strip()
+        active_doc = {
+            "filename": doc_filename,
+            "text": doc_content,
+            "elements_count": 0,
+        }
+        db.set_session_document(session_id, active_doc)
+
     # Take prior messages (excluding the message just inserted)
     prior_messages = [m for m in history_messages if m["id"] != user_msg["id"]][-6:]
 
@@ -576,9 +593,10 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
     has_salesforce_intent = "salesforce" in planned_sources
     has_jira_intent = "jira" in planned_sources
     has_parser_intent = (
-        "universal_parser" in planned_sources
+        bool(active_doc)
+        or "universal_parser" in planned_sources
         or bool(plan.get("parser_query"))
-        or bool(re.search(r"\b(universal\s*parser|parse\s*(this|document|pdf|file|table|sheet)?|ocr|extract\s*table|extract\s*tables|document\s*parser)\b", clean_text, re.I))
+        or bool(re.search(r"\b(universal\s*parser|parse\s*(this|document|pdf|file|table|sheet)?|ocr|extract\s*table|extract\s*tables|document\s*parser|certificate|score|marks|grade|roll\s*no|roll\s*number|awarded|exam|nptel)\b", clean_text, re.I))
     )
 
     rich_cards: list[dict[str, Any]] = []
@@ -1661,7 +1679,7 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                     retrieved_evidence.append(f"Notion retrieval error: {str(e)}")
 
         # M. Universal Document Parser Retrieval
-        if has_parser_intent:
+        if has_parser_intent or active_doc:
             try:
                 parser_conn = get_universal_parser_connector()
                 st = parser_conn.get_status()
@@ -1680,54 +1698,73 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
                         "icon": "document_parser",
                         "verified": True,
                     })
-                    # Check for documents in test-share or query
-                    target_file = None
-                    file_share_root = os.getenv("FILE_SHARE_ROOT", "/home/appinventiv/source-systems-poc/test-share")
-                    if os.path.isdir(file_share_root):
-                        for f in sorted(os.listdir(file_share_root)):
-                            if f.lower().endswith(('.pdf', '.docx', '.xlsx', '.txt', '.md', '.csv', '.png', '.jpg')):
-                                if f.lower() in clean_text.lower() or not target_file:
-                                    target_file = os.path.join(file_share_root, f)
-                                    if f.lower() in clean_text.lower():
-                                        break
-                    
-                    if target_file and os.path.exists(target_file):
-                        with open(target_file, "rb") as fh:
-                            raw_bytes = fh.read()
-                        fname = os.path.basename(target_file)
-                        parse_res = parser_conn.extract_text_and_tables(raw_bytes, fname, mode="balanced")
-                        doc_text = parse_res.get("text", "")[:3000]
-                        tables = parse_res.get("tables", [])
-                        tbl_summary = f"{len(tables)} tables extracted" if tables else "No tabular elements"
+
+                    # If this session has an active document, ALWAYS inject its content as primary evidence
+                    if active_doc and active_doc.get("text"):
+                        doc_fname = active_doc.get("filename", "Uploaded Document")
+                        doc_body = active_doc.get("text", "")
                         retrieved_evidence.append(
-                            f"Universal Document Parser Parsed Document '{fname}' ({len(raw_bytes)} bytes, {parse_res.get('elements_count')} elements, {parse_res.get('duration_ms', 0):.1f}ms):\n"
-                            f"- Tabular: {tbl_summary}\n"
-                            f"- Content Excerpt:\n{doc_text}"
+                            f"ACTIVE SESSION DOCUMENT '{doc_fname}' (Parsed via Universal Parser):\n"
+                            f"----------------------------------------\n"
+                            f"{doc_body}\n"
+                            f"----------------------------------------"
                         )
                         rich_cards.append({
                             "type": "document_parser",
-                            "title": f"Parsed Document: {fname}",
-                            "metadata": f"Universal Parser • {parse_res.get('elements_count')} elements • {parse_res.get('duration_ms', 0):.1f}ms",
-                            "snippet": (doc_text[:250] + "...") if len(doc_text) > 250 else doc_text,
-                            "action_label": "View Structured Data",
+                            "title": f"Active Document: {doc_fname}",
+                            "metadata": "Universal Parser • Active Session Context",
+                            "snippet": (doc_body[:250] + "...") if len(doc_body) > 250 else doc_body,
+                            "action_label": "Document Loaded",
                         })
                     else:
-                        formats_str = ", ".join(st.get("supported_formats", []))
-                        modes_str = ", ".join(st.get("modes", []))
-                        retrieved_evidence.append(
-                            "Universal Document Parser (Parse and Furious) is active, connected, and operational.\n"
-                            f"- Supported Formats: {formats_str}\n"
-                            f"- Available Modes: {modes_str}\n"
-                            "- Features: Cell-by-cell table grounding, OCR via Tesseract, prompt-injection defense, and token-bounded RAG chunks.\n"
-                            "- Usage: Upload a file via the paperclip attachment icon or query any document in the workspace."
-                        )
-                        rich_cards.append({
-                            "type": "document_parser",
-                            "title": "Universal Document Parser Engine",
-                            "metadata": f"Ensemble Engine • {len(st.get('supported_formats', []))} formats supported",
-                            "snippet": "Multi-format document parsing ensemble for PDF, Word, Excel, PPTX, OCR, and table grounding.",
-                            "action_label": "Configure Parser",
-                        })
+                        # Check for documents in test-share or query
+                        target_file = None
+                        file_share_root = os.getenv("FILE_SHARE_ROOT", "/home/appinventiv/source-systems-poc/test-share")
+                        if os.path.isdir(file_share_root):
+                            for f in sorted(os.listdir(file_share_root)):
+                                if f.lower().endswith(('.pdf', '.docx', '.xlsx', '.txt', '.md', '.csv', '.png', '.jpg')):
+                                    if f.lower() in clean_text.lower() or not target_file:
+                                        target_file = os.path.join(file_share_root, f)
+                                        if f.lower() in clean_text.lower():
+                                            break
+                        
+                        if target_file and os.path.exists(target_file):
+                            with open(target_file, "rb") as fh:
+                                raw_bytes = fh.read()
+                            fname = os.path.basename(target_file)
+                            parse_res = parser_conn.extract_text_and_tables(raw_bytes, fname, mode="balanced")
+                            doc_text = parse_res.get("text", "")[:3500]
+                            tables = parse_res.get("tables", [])
+                            tbl_summary = f"{len(tables)} tables extracted" if tables else "No tabular elements"
+                            retrieved_evidence.append(
+                                f"Universal Document Parser Parsed Document '{fname}' ({len(raw_bytes)} bytes, {parse_res.get('elements_count')} elements, {parse_res.get('duration_ms', 0):.1f}ms):\n"
+                                f"- Tabular: {tbl_summary}\n"
+                                f"- Content Excerpt:\n{doc_text}"
+                            )
+                            rich_cards.append({
+                                "type": "document_parser",
+                                "title": f"Parsed Document: {fname}",
+                                "metadata": f"Universal Parser • {parse_res.get('elements_count')} elements • {parse_res.get('duration_ms', 0):.1f}ms",
+                                "snippet": (doc_text[:250] + "...") if len(doc_text) > 250 else doc_text,
+                                "action_label": "View Structured Data",
+                            })
+                        else:
+                            formats_str = ", ".join(st.get("supported_formats", []))
+                            modes_str = ", ".join(st.get("modes", []))
+                            retrieved_evidence.append(
+                                "Universal Document Parser (Parse and Furious) is active, connected, and operational.\n"
+                                f"- Supported Formats: {formats_str}\n"
+                                f"- Available Modes: {modes_str}\n"
+                                "- Features: Cell-by-cell table grounding, OCR via Tesseract, prompt-injection defense, and token-bounded RAG chunks.\n"
+                                "- Usage: Upload a file via the paperclip attachment icon or query any document in the workspace."
+                            )
+                            rich_cards.append({
+                                "type": "document_parser",
+                                "title": "Universal Document Parser Engine",
+                                "metadata": f"Ensemble Engine • {len(st.get('supported_formats', []))} formats supported",
+                                "snippet": "Multi-format document parsing ensemble for PDF, Word, Excel, PPTX, OCR, and table grounding.",
+                                "action_label": "Configure Parser",
+                            })
             except Exception as e:
                 logger.error("Error invoking Universal Document Parser: %s", str(e))
                 retrieved_evidence.append(f"Universal Document Parser error: {str(e)}")
@@ -1776,6 +1813,7 @@ def process_chat_turn(session_id: str, user_text: str) -> dict[str, Any]:
             "3. If evidence was retrieved:\n"
             "   - For email inquiries, extract the exact Subject, Sender, Date, Executive Summary, Key Highlights, and real Action Items.\n"
             "   - For absence/catch-up inquiries ('away for 3 days', 'what happened while I was away'): synthesize what actually arrived or changed across the retrieved emails and documents. Highlight Key Developments, Decisions, and Urgent Actions.\n"
+            "   - For document analysis (PDFs, certificates, invoices, reports): inspect the document text thoroughly. Extract all recipient names (e.g. 'SHASHVAT', 'awarded to'), scores, grades, roll numbers, dates, institutions, and tables. Answer the user's specific questions factually and directly based on the document.\n"
             "   - In 'key_updates', list 2-5 concise bullet points of actual events or message summaries from the evidence.\n"
             "   - In 'pending_actions', list real action items requiring attention. If none (e.g. celebratory or informational emails), leave as [].\n"
             "4. Return ONLY a valid JSON object matching this schema:\n"

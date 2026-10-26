@@ -8,14 +8,19 @@ import {
   ArrowRight,
   Bot,
   FileSearch,
+  FileSpreadsheet,
+  X,
 } from 'lucide-react';
-import { ChatMessage, ConnectorSource } from '../types/chat';
+import { ChatMessage, ConnectorSource, ActiveDocumentState } from '../types/chat';
 import { MessageBubble } from './MessageBubble';
 import { MessageComposer } from './MessageComposer';
 
 interface ChatWindowProps {
   messages: ChatMessage[];
   sources?: ConnectorSource[];
+  activeDocument?: ActiveDocumentState | null;
+  onAttachDocument?: (doc: ActiveDocumentState) => void;
+  onClearActiveDocument?: () => void;
   onSendMessage: (content: string) => void;
   onOpenAddSources?: () => void;
   isLoading?: boolean;
@@ -24,6 +29,9 @@ interface ChatWindowProps {
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   messages,
   sources = [],
+  activeDocument,
+  onAttachDocument,
+  onClearActiveDocument,
   onSendMessage,
   onOpenAddSources,
   isLoading = false,
@@ -94,6 +102,37 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           <span>Enterprise Secure</span>
         </div>
       </header>
+
+      {/* Active Document Session Strip (Persistent Context) */}
+      {activeDocument && (
+        <div className="chat-active-document-strip">
+          <div className="active-doc-left">
+            <div className="active-doc-icon-badge">
+              <FileSpreadsheet size={15} />
+            </div>
+            <div className="active-doc-meta-text">
+              <span className="active-doc-label">Active Document in Context:</span>
+              <span className="active-doc-name">{activeDocument.filename}</span>
+              <span className="active-doc-counts">
+                ({activeDocument.elements_count || 0} elements
+                {activeDocument.tables && activeDocument.tables.length > 0
+                  ? `, ${activeDocument.tables.length} tables`
+                  : ''}
+                )
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn-detach-doc"
+            onClick={onClearActiveDocument}
+            title="Detach document from this chat session"
+          >
+            <X size={13} />
+            <span>Detach</span>
+          </button>
+        </div>
+      )}
 
       {/* Messages Scroll Area */}
       <div className="chat-messages-container">
@@ -179,6 +218,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         <div className="chat-content-container">
           <MessageComposer
             sources={sources}
+            activeDocument={activeDocument}
+            onAttachDocument={onAttachDocument}
+            onClearActiveDocument={onClearActiveDocument}
             onSendMessage={onSendMessage}
             onOpenAddSources={onOpenAddSources}
             disabled={isLoading}

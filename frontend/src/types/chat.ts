@@ -1,9 +1,19 @@
+export interface ActiveDocumentState {
+  filename: string;
+  text?: string;
+  elements_count?: number;
+  duration_ms?: number;
+  tables?: any[];
+  hidden_text_detected?: boolean;
+}
+
 export interface ChatSession {
   id: string;
   title: string;
   created_at: string;
   updated_at: string;
   message_count: number;
+  active_document?: ActiveDocumentState | null;
 }
 
 export interface RichCardAttachment {

@@ -798,3 +798,31 @@ def chat_turn_endpoint(session_id: str, payload: ChatQueryRequest):
 
     return process_chat_turn(session_id=session_id, user_text=payload.message)
 
+
+class SetSessionDocumentRequest(BaseModel):
+    filename: str
+    text: str
+    elements_count: int = 0
+    tables: list[dict[str, Any]] | None = None
+    duration_ms: float = 0.0
+
+
+@router.post("/chat/sessions/{session_id}/document")
+def set_session_active_document(session_id: str, payload: SetSessionDocumentRequest):
+    session = db.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    doc_data = payload.dict()
+    db.set_session_document(session_id, doc_data)
+    return {"status": "ok", "active_document": doc_data}
+
+
+@router.delete("/chat/sessions/{session_id}/document")
+def clear_session_active_document(session_id: str):
+    session = db.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    db.set_session_document(session_id, None)
+    return {"status": "ok", "message": "Active document detached from session"}
+
+

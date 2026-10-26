@@ -141,17 +141,29 @@ class UniversalParserConnector:
         tables = []
         text_lines = []
 
-        # If data itself contains chunks or elements
+        # 1. Extract from Parse and Furious elements (including figure text and OCR)
         for el_id, el in elements.items():
             el_type = el.get("type", "paragraph")
+            attrs = el.get("attributes", {})
             el_text = el.get("text", "").strip()
+            
+            # Extract text from figures, OCR, or captions if text is empty
+            if not el_text:
+                el_text = (
+                    attrs.get("text_in_figure")
+                    or attrs.get("ocr_text")
+                    or attrs.get("caption")
+                    or ""
+                ).strip()
+
             if el_type == "table":
                 tables.append({
                     "id": el_id,
                     "text": el_text,
                     "order": el.get("order", 0),
                 })
-            if el_text:
+
+            if el_text and el_text not in text_lines:
                 text_lines.append(el_text)
                 chunks.append({
                     "id": el_id,
@@ -160,6 +172,26 @@ class UniversalParserConnector:
                     "source": el.get("source", []),
                 })
 
+        # 2. For PDFs, augment with direct text layer (e.g. pdfplumber / pypdf) to ensure no names/scores are lost
+        if filename.lower().endswith(".pdf"):
+            try:
+                import io
+                import pdfplumber
+                with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+                    for page in pdf.pages:
+                        page_text = page.extract_text() or ""
+                        for line in page_text.splitlines():
+                            clean_line = line.strip()
+                            if clean_line and clean_line not in text_lines:
+                                text_lines.append(clean_line)
+            except Exception as e:
+                logger.debug("PDF secondary extraction note: %s", str(e))
+
+        # Filter out noisy isolated single-character artifacts (e.g. fragmented logo vectors)
+        meaningful_lines = [l for l in text_lines if len(l.strip()) > 1 or l.strip().isdigit()]
+        if not meaningful_lines and text_lines:
+            meaningful_lines = text_lines
+
         # Check validations (e.g. hidden text)
         validations = data.get("validations", [])
         hidden_text_flag = False
@@ -167,7 +199,7 @@ class UniversalParserConnector:
             if v.get("check") == "hidden_text" and v.get("status") == "fail":
                 hidden_text_flag = True
 
-        combined_text = "\n\n".join(text_lines)
+        combined_text = "\n\n".join(meaningful_lines)
         return {
             "success": True,
             "filename": filename,

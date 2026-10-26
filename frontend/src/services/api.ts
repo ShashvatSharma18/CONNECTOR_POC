@@ -1,4 +1,4 @@
-import { ChatMessage, ChatSession, ConnectorsStatusResponse } from '../types/chat';
+import { ChatMessage, ChatSession, ConnectorsStatusResponse, ActiveDocumentState } from '../types/chat';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
@@ -27,7 +27,7 @@ export async function createSession(title: string = 'New chat'): Promise<ChatSes
 
 export async function fetchSessionDetails(
   sessionId: string
-): Promise<{ id: string; title: string; messages: ChatMessage[] }> {
+): Promise<{ id: string; title: string; messages: ChatMessage[]; active_document?: ActiveDocumentState | null }> {
   const res = await fetch(`${API_BASE}/chat/sessions/${sessionId}`);
   if (!res.ok) throw new Error('Failed to fetch session messages');
   return res.json();
@@ -121,14 +121,8 @@ export async function disconnectConnector(
   return res.json();
 }
 
-export interface ParsedDocumentResult {
+export interface ParsedDocumentResult extends ActiveDocumentState {
   success: boolean;
-  filename: string;
-  elements_count?: number;
-  duration_ms?: number;
-  text?: string;
-  tables?: Array<{ id: string; text: string; order: number }>;
-  hidden_text_detected?: boolean;
   error?: string;
 }
 
@@ -158,6 +152,27 @@ export async function uploadAndParseDocument(
 export async function fetchParserStatus(): Promise<any> {
   const res = await fetch(`${API_BASE}/parser/status`);
   if (!res.ok) throw new Error('Failed to fetch parser status');
+  return res.json();
+}
+
+export async function setSessionDocument(
+  sessionId: string,
+  docData: ActiveDocumentState
+): Promise<any> {
+  const res = await fetch(`${API_BASE}/chat/sessions/${sessionId}/document`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(docData),
+  });
+  if (!res.ok) throw new Error('Failed to set active document for session');
+  return res.json();
+}
+
+export async function clearSessionDocument(sessionId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/chat/sessions/${sessionId}/document`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error('Failed to clear active document');
   return res.json();
 }
 
